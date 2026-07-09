@@ -5,18 +5,18 @@ exports.generateQuestion = async (req, res) => {
   try {
     const { role, difficulty, questionType } = req.body;
 
-    // Validate inputs
-    if (!role || !interviewService.ROLES.includes(role)) {
+    // Validate inputs - Removed strict role check, just ensure it's not empty
+    if (!role || role.trim().length < 2) {
       return res.status(400).json({
         success: false,
-        message: `Invalid role. Choose from: ${interviewService.ROLES.join(', ')}`
+        message: 'Please provide a valid role title (e.g., "Frontend Developer")'
       });
     }
 
-    if (!difficulty || !interviewService.DIFFICULTY_LEVELS.includes(difficulty)) {
+    if (!difficulty || !['beginner', 'intermediate', 'expert'].includes(difficulty)) {
       return res.status(400).json({
         success: false,
-        message: `Invalid difficulty. Choose from: ${interviewService.DIFFICULTY_LEVELS.join(', ')}`
+        message: 'Invalid difficulty. Choose from: beginner, intermediate, expert'
       });
     }
 
@@ -110,10 +110,11 @@ exports.getQuestionBank = async (req, res) => {
   try {
     const { role, count } = req.body;
 
-    if (!role || !interviewService.ROLES.includes(role)) {
+    // Removed strict role check here too
+    if (!role || role.trim().length < 2) {
       return res.status(400).json({
         success: false,
-        message: `Invalid role. Choose from: ${interviewService.ROLES.join(', ')}`
+        message: 'Please provide a valid role title'
       });
     }
 
@@ -133,7 +134,8 @@ exports.getQuestionBank = async (req, res) => {
   }
 };
 
-// Get available roles
+// Get available roles (You can keep this for the Question Bank screen dropdown if needed, 
+// but it's no longer enforced by the backend)
 exports.getRoles = async (req, res) => {
   res.json({
     success: true,
