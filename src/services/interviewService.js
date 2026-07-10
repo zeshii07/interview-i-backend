@@ -24,7 +24,7 @@ async function generateQuestion(role, difficulty, questionType = 'behavioral') {
 You are an expert interview coach. Generate ONE interview question for a ${role} position.
 
 Difficulty level: ${difficulty}
-Question type: ${questionType} (behavioral, technical, or situational)
+Question type: ${questionType === 'mixed' ? 'Randomly choose ONE from behavioral, technical, or situational' : questionType}
 
 Return ONLY valid JSON in this exact format:
 {
