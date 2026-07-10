@@ -19,19 +19,23 @@ function cleanJSON(text) {
 }
 
 // Generate interview question
-async function generateQuestion(role, difficulty, questionType = 'behavioral') {
+async function generateQuestion(role, difficulty, questionType = 'mixed') {
   const prompt = `
-You are an expert interview coach. Generate ONE interview question for a ${role} position.
+You are an expert interview coach. Generate exactly ONE unique interview question for a ${role} position.
+
+CRITICAL INSTRUCTION TO AVOID REPETITION: 
+DO NOT ask generic questions like "Tell me about yourself", "Why do you want this job?", "What are your strengths/weaknesses?", or "Where do you see yourself in 5 years?". 
+Instead, think of a highly specific, realistic, and challenging scenario, problem, or technical concept directly related to the daily tasks of a ${role}.
 
 Difficulty level: ${difficulty}
-Question type: ${questionType === 'mixed' ? 'Randomly choose ONE from behavioral, technical, or situational' : questionType}
+Question type: ${questionType === 'mixed' ? 'Randomly choose ONE from behavioral, technical, or situational. Ensure high variety.' : questionType}
 
 Return ONLY valid JSON in this exact format:
 {
-  "question": "The interview question here",
-  "category": "behavioral",
-  "tips": ["Tip 1", "Tip 2", "Tip 3"],
-  "what_interviewer_wants": "What the interviewer is looking for",
+  "question": "A very specific, non-generic, challenging interview question here",
+  "category": "behavioral|technical|situational",
+  "tips": ["Specific tip 1", "Specific tip 2", "Specific tip 3"],
+  "what_interviewer_wants": "What the interviewer is specifically evaluating with this question",
   "time_suggested": 120
 }
 
@@ -42,7 +46,7 @@ Do not include any text outside the JSON.
     const response = await groq.chat.completions.create({
       model: model,
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7,
+      temperature: 0.9, // Increased from 0.7 to 0.9 for MORE randomness/creativity
       response_format: { type: "json_object" }
     });
     
