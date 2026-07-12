@@ -1,43 +1,98 @@
+const axios = require('axios');
 const FormData = require('form-data');
-const fs = require('fs');
-const path = require('path');
 
-// Your Groq API Key is already in process.env.GROQ_API_KEY
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/audio/transcriptions';
+const GROQ_API_URL =
+  'https://api.groq.com/openai/v1/audio/transcriptions';
 
-async function transcribeAudio(fileBuffer, originalName) {
+function getMimeType(filename = '') {
+  const extension = filename
+    .split('.')
+    .pop()
+    ?.toLowerCase();
+
+  const types = {
+    m4a: 'audio/mp4',
+    mp4: 'audio/mp4',
+    mp3: 'audio/mpeg',
+    wav: 'audio/wav',
+    webm: 'audio/webm',
+    aac: 'audio/aac',
+    ogg: 'audio/ogg',
+  };
+
+  return types[extension] || 'application/octet-stream';
+}
+
+async function transcribeAudio(
+  fileBuffer,
+  originalName = 'audio.m4a'
+) {
+  if (!Buffer.isBuffer(fileBuffer)) {
+    throw new Error('Invalid audio buffer');
+  }
+
+  if (fileBuffer.length === 0) {
+    throw new Error('Audio file is empty');
+  }
+
+  const apiKey = process.env.GROQ_API_KEY?.trim();
+
+  if (!apiKey) {
+    throw new Error('GROQ_API_KEY is missing');
+  }
+
+  const mimeType = getMimeType(originalName);
+
   const formData = new FormData();
-  
-  // Append the audio file. Whisper supports wav, m4a, mp3, etc.
+
   formData.append('file', fileBuffer, {
-    filename: originalName || 'audio.m4a',
-    contentType: 'audio/mpeg', 
+    filename: originalName,
+    contentType: mimeType,
+    knownLength: fileBuffer.length,
   });
-  
+
   formData.append('model', 'whisper-large-v3');
   formData.append('response_format', 'json');
 
   try {
-    const response = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-        ...formData.getHeaders(), // Sets 'multipart/form-data' boundary
-      },
-      body: formData,
-    });
+    const response = await axios.post(
+      GROQ_API_URL,
+      formData,
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          ...formData.getHeaders(),
+        },
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+        timeout: 120000,
+      }
+    );
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error?.message || 'Transcription failed');
+    if (!response.data?.text) {
+      throw new Error('Groq returned an empty transcript');
     }
 
-    const data = await response.json();
-    return data.text; // Returns perfectly formatted text with punctuation!
+    return response.data.text;
   } catch (error) {
-    console.error('Transcription error:', error);
-    throw new Error('Failed to transcribe audio');
+    const message =
+      error.response?.data?.error?.message ||
+      error.response?.data?.message ||
+      error.message ||
+      'Failed to transcribe audio';
+
+    console.error('Groq transcription error:', {
+      status: error.response?.status,
+      message,
+      fileName: originalName,
+      mimeType,
+      fileSize: fileBuffer.length,
+    });
+
+    throw new Error(message);
   }
 }
 
-module.exports = { transcribeAudio };
+module.exports = {
+  transcribeAudio,
+};
