@@ -33,7 +33,8 @@ async function translateQuestionPayload(payload, language) {
     temperature: 0.1,
     response_format: { type: 'json_object' },
   });
-  return JSON.parse(cleanJSON(response.choices[0].message.content));
+  const translated = JSON.parse(cleanJSON(response.choices[0].message.content));
+  return { ...translated, category: payload.category };
 }
 
 // Helper to clean JSON response
