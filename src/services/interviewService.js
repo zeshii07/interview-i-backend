@@ -15,7 +15,25 @@ const DIFFICULTY_LEVELS = ['beginner', 'intermediate', 'expert'];
 const SUPPORTED_LANGUAGES = ['English', 'Urdu', 'Hindi', 'Arabic', 'Spanish', 'French', 'German'];
 
 function safeLanguage(language) {
-  return SUPPORTED_LANGUAGES.includes(language) ? language : 'English';
+  const requested = String(language || '').trim().toLowerCase();
+  return SUPPORTED_LANGUAGES.find((item) => item.toLowerCase() === requested) || 'English';
+}
+
+async function translateQuestionPayload(payload, language) {
+  if (language === 'English') return payload;
+  const response = await groq.chat.completions.create({
+    model,
+    messages: [
+      {
+        role: 'system',
+        content: `You are a strict professional translator. Translate every human-readable value into ${language}. Never answer in English. Preserve JSON keys, category, numbers, and array structure exactly.`,
+      },
+      { role: 'user', content: JSON.stringify(payload) },
+    ],
+    temperature: 0.1,
+    response_format: { type: 'json_object' },
+  });
+  return JSON.parse(cleanJSON(response.choices[0].message.content));
 }
 
 // Helper to clean JSON response
@@ -53,13 +71,18 @@ Do not include any text outside the JSON.
   try {
     const response = await groq.chat.completions.create({
       model: model,
-      messages: [{ role: 'user', content: prompt }],
+      messages: [
+        { role: 'system', content: `You create interview content in ${responseLanguage}. For non-English requests, English prose is forbidden.` },
+        { role: 'user', content: prompt },
+      ],
       temperature: 0.9, // Increased from 0.7 to 0.9 for MORE randomness/creativity
       response_format: { type: "json_object" }
     });
     
     const text = response.choices[0].message.content;
-    return JSON.parse(cleanJSON(text));
+    const question = JSON.parse(cleanJSON(text));
+    const localizedQuestion = await translateQuestionPayload(question, responseLanguage);
+    return { ...localizedQuestion, language: responseLanguage };
   } catch (error) {
     console.error('Error generating question:', error);
     throw new Error('Failed to generate question');

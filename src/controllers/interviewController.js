@@ -37,7 +37,8 @@ exports.generateQuestion = async (req, res) => {
 
     res.json({
       success: true,
-      data: question
+      data: question,
+      language
     });
 
   } catch (error) {
@@ -94,7 +95,7 @@ exports.evaluateAnswer = async (req, res) => {
 // Analyze resume
 exports.analyzeResume = async (req, res) => {
   try {
-    const { jobDescription } = req.body;
+    const { jobDescription } = req.body || {};
     const resumeText = req.file ? await extractResumeText(req.file) : req.body.resumeText;
 
     if (!resumeText || resumeText.length < 50) {
@@ -108,7 +109,8 @@ exports.analyzeResume = async (req, res) => {
 
     res.json({
       success: true,
-      data: analysis
+      data: analysis,
+      source: req.file ? 'uploaded_file' : 'pasted_text'
     });
 
   } catch (error) {

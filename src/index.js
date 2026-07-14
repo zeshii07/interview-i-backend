@@ -40,6 +40,8 @@ app.get('/api/health', (req, res) => {
   res.json({ 
     success: true, 
     message: 'Hirely AI API is running',
+    apiVersion: 2,
+    features: ['multilanguage-interviews', 'resume-file-upload'],
     timestamp: new Date().toISOString()
   });
 });
