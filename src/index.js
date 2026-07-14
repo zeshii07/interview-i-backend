@@ -23,6 +23,14 @@ app.use(express.json({ limit: '10mb' }));
 const interviewRoutes = require('./routes/interviewRoutes');
 app.use('/api/interview', interviewRoutes);
 
+app.use((error, _req, res, next) => {
+  if (!error) return next();
+  if (error.name === 'MulterError' || /PDF|DOCX|DOC|resume/i.test(error.message)) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+  return next(error);
+});
+
 // ADDED: Transcribe Route (Attached directly to app, not router)
 const transcribeController = require('./controllers/transcribeController');
 app.post('/api/interview/transcribe', upload.single('audio'), transcribeController.transcribeAudioFile);

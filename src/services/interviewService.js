@@ -12,6 +12,11 @@ const ROLES = [
 ];
 
 const DIFFICULTY_LEVELS = ['beginner', 'intermediate', 'expert'];
+const SUPPORTED_LANGUAGES = ['English', 'Urdu', 'Hindi', 'Arabic', 'Spanish', 'French', 'German'];
+
+function safeLanguage(language) {
+  return SUPPORTED_LANGUAGES.includes(language) ? language : 'English';
+}
 
 // Helper to clean JSON response
 function cleanJSON(text) {
@@ -19,7 +24,8 @@ function cleanJSON(text) {
 }
 
 // Generate interview question
-async function generateQuestion(role, difficulty, questionType = 'mixed') {
+async function generateQuestion(role, difficulty, questionType = 'mixed', language = 'English') {
+  const responseLanguage = safeLanguage(language);
   const prompt = `
 You are an expert interview coach. Generate exactly ONE unique interview question for a ${role} position.
 
@@ -29,6 +35,8 @@ Instead, think of a highly specific, realistic, and challenging scenario, proble
 
 Difficulty level: ${difficulty}
 Question type: ${questionType === 'mixed' ? 'Randomly choose ONE from behavioral, technical, or situational. Ensure high variety.' : questionType}
+
+LANGUAGE REQUIREMENT: Write the question, tips, and what_interviewer_wants entirely in ${responseLanguage}. Keep JSON property names and the category value in English.
 
 Return ONLY valid JSON in this exact format:
 {
@@ -59,7 +67,8 @@ Do not include any text outside the JSON.
 }
 
 // Evaluate user's answer
-async function evaluateAnswer(role, difficulty, question, userAnswer) {
+async function evaluateAnswer(role, difficulty, question, userAnswer, language = 'English') {
+  const responseLanguage = safeLanguage(language);
   const prompt = `
 You are an expert interview evaluator for ${role} positions.
 
@@ -67,6 +76,8 @@ The interview question was: "${question}"
 Difficulty level: ${difficulty}
 
 The candidate's answer: "${userAnswer}"
+
+LANGUAGE REQUIREMENT: Write all feedback, strengths, improvements, the sample answer, and the follow-up question entirely in ${responseLanguage}. Keep JSON property names unchanged and keep all numeric scores as numbers.
 
 Evaluate the answer and return ONLY valid JSON:
 {

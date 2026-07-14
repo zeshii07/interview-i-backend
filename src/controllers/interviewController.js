@@ -1,9 +1,22 @@
 const interviewService = require('../services/interviewService');
+const officeParser = require('officeparser');
+const WordExtractor = require('word-extractor');
+
+const extractResumeText = async (file) => {
+  const extension = file.originalname.split('.').pop()?.toLowerCase();
+  if (extension === 'doc') {
+    const document = await new WordExtractor().extract(file.buffer);
+    return document.getBody();
+  }
+  const ast = await officeParser.parseOffice(file.buffer, { fileType: extension });
+  const result = await ast.to('text');
+  return String(result.value || '');
+};
 
 // Generate a single interview question
 exports.generateQuestion = async (req, res) => {
   try {
-    const { role, difficulty, questionType } = req.body;
+    const { role, difficulty, questionType, language = 'English' } = req.body;
 
     // Validate inputs - Removed strict role check, just ensure it's not empty
     if (!role || role.trim().length < 2) {
@@ -20,7 +33,7 @@ exports.generateQuestion = async (req, res) => {
       });
     }
 
-    const question = await interviewService.generateQuestion(role, difficulty, questionType);
+    const question = await interviewService.generateQuestion(role, difficulty, questionType, language);
 
     res.json({
       success: true,
@@ -39,7 +52,7 @@ exports.generateQuestion = async (req, res) => {
 // Evaluate user's answer
 exports.evaluateAnswer = async (req, res) => {
   try {
-    const { role, difficulty, question, userAnswer } = req.body;
+    const { role, difficulty, question, userAnswer, language = 'English' } = req.body;
 
     // Validate required fields
     if (!role || !question || !userAnswer) {
@@ -60,7 +73,8 @@ exports.evaluateAnswer = async (req, res) => {
       role, 
       difficulty || 'intermediate', 
       question, 
-      userAnswer
+      userAnswer,
+      language
     );
 
     res.json({
@@ -80,12 +94,13 @@ exports.evaluateAnswer = async (req, res) => {
 // Analyze resume
 exports.analyzeResume = async (req, res) => {
   try {
-    const { resumeText, jobDescription } = req.body;
+    const { jobDescription } = req.body;
+    const resumeText = req.file ? await extractResumeText(req.file) : req.body.resumeText;
 
     if (!resumeText || resumeText.length < 50) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide resume text (at least 50 characters)'
+        message: 'We could not extract enough resume text. Try another PDF, DOCX, or DOC file.'
       });
     }
 
