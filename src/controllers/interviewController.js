@@ -1,17 +1,21 @@
+
 const interviewService = require('../services/interviewService');
 const officeParser = require('officeparser');
 const WordExtractor = require('word-extractor');
 
-const DIFFICULTIES = ['beginner', 'intermediate', 'expert'];
-const QUESTION_TYPES = ['mixed', 'technical', 'behavioral', 'situational'];
+const ALLOWED_DIFFICULTIES = ['beginner', 'intermediate', 'expert'];
+const ALLOWED_QUESTION_TYPES = ['mixed', 'technical', 'behavioral', 'situational'];
 
-const clean = (value) => (typeof value === 'string' ? value.trim() : '');
-const clampInt = (value, min, max, fallback) => {
+function cleanText(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function clampInteger(value, min, max, fallback) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback;
-};
+}
 
-const extractResumeText = async (file) => {
+async function extractResumeText(file) {
   const extension = file.originalname.split('.').pop()?.toLowerCase();
 
   if (extension === 'doc') {
@@ -22,7 +26,7 @@ const extractResumeText = async (file) => {
   const ast = await officeParser.parseOffice(file.buffer, { fileType: extension });
   const result = await ast.to('text');
   return String(result.value || '');
-};
+}
 
 exports.generateQuestion = async (req, res) => {
   try {
@@ -34,46 +38,50 @@ exports.generateQuestion = async (req, res) => {
       previousQuestions = [],
     } = req.body || {};
 
-    const safeRole = clean(role);
-    const safeDifficulty = clean(difficulty).toLowerCase();
-    const safeType = clean(questionType).toLowerCase();
+    const cleanRole = cleanText(role);
+    const cleanDifficulty = cleanText(difficulty).toLowerCase();
+    const cleanQuestionType = cleanText(questionType).toLowerCase();
 
-    if (safeRole.length < 2 || safeRole.length > 100) {
+    if (cleanRole.length < 2 || cleanRole.length > 100) {
       return res.status(400).json({
         success: false,
         message: 'Please provide a valid role title between 2 and 100 characters.',
       });
     }
 
-    if (!DIFFICULTIES.includes(safeDifficulty)) {
+    if (!ALLOWED_DIFFICULTIES.includes(cleanDifficulty)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid difficulty. Choose beginner, intermediate, or expert.',
       });
     }
 
-    if (!QUESTION_TYPES.includes(safeType)) {
+    if (!ALLOWED_QUESTION_TYPES.includes(cleanQuestionType)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid question type.',
+        message: 'Invalid question type. Choose mixed, technical, behavioral, or situational.',
       });
     }
 
-    const recentQuestions = Array.isArray(previousQuestions)
-      ? previousQuestions.filter((q) => typeof q === 'string').map((q) => q.trim()).filter(Boolean).slice(-8)
+    const safePreviousQuestions = Array.isArray(previousQuestions)
+      ? previousQuestions
+          .filter((item) => typeof item === 'string')
+          .map((item) => item.trim())
+          .filter(Boolean)
+          .slice(-8)
       : [];
 
     const question = await interviewService.generateQuestion(
-      safeRole,
-      safeDifficulty,
-      safeType,
+      cleanRole,
+      cleanDifficulty,
+      cleanQuestionType,
       language,
-      recentQuestions
+      safePreviousQuestions
     );
 
     return res.json({ success: true, data: question, language: question.language });
   } catch (error) {
-    console.error('Generate question error:', error);
+    console.error('Generate question controller error:', error);
     return res.status(500).json({
       success: false,
       message: error.publicMessage || 'Failed to generate an interview question.',
@@ -92,75 +100,93 @@ exports.evaluateAnswer = async (req, res) => {
       language = 'English',
     } = req.body || {};
 
-    const safeRole = clean(role);
-    const safeQuestion = clean(question);
-    const safeAnswer = clean(userAnswer);
-    const safeDifficulty = clean(difficulty).toLowerCase();
+    const cleanRole = cleanText(role);
+    const cleanDifficulty = cleanText(difficulty).toLowerCase();
+    const cleanQuestion = cleanText(question);
+    const cleanAnswer = cleanText(userAnswer);
 
-    if (!safeRole || !safeQuestion || !safeAnswer) {
+    if (!cleanRole || !cleanQuestion || !cleanAnswer) {
       return res.status(400).json({
         success: false,
         message: 'Role, question, and userAnswer are required.',
       });
     }
 
-    if (!DIFFICULTIES.includes(safeDifficulty)) {
-      return res.status(400).json({ success: false, message: 'Invalid difficulty.' });
+    if (!ALLOWED_DIFFICULTIES.includes(cleanDifficulty)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid difficulty. Choose beginner, intermediate, or expert.',
+      });
     }
 
-    if (safeAnswer.length < 20) {
+    if (cleanAnswer.length < 20) {
       return res.status(400).json({
         success: false,
         message: 'Please provide a more detailed answer of at least 20 characters.',
       });
     }
 
-    if (safeAnswer.length > 12000) {
-      return res.status(400).json({ success: false, message: 'Answer is too long.' });
+    if (cleanAnswer.length > 12000) {
+      return res.status(400).json({
+        success: false,
+        message: 'The answer is too long. Please keep it under 12,000 characters.',
+      });
     }
 
     const evaluation = await interviewService.evaluateAnswer(
-      safeRole,
-      safeDifficulty,
-      safeQuestion,
-      safeAnswer,
+      cleanRole,
+      cleanDifficulty,
+      cleanQuestion,
+      cleanAnswer,
       language,
       questionCategory
     );
 
     return res.json({ success: true, data: evaluation });
   } catch (error) {
-    console.error('Evaluate answer error:', error);
+    console.error('Evaluate answer controller error:', error);
     return res.status(500).json({
       success: false,
-      message: error.publicMessage || 'Failed to evaluate the answer.',
+      message: error.publicMessage || 'Failed to evaluate the interview answer.',
     });
   }
 };
 
 exports.analyzeResume = async (req, res) => {
   try {
+    const { jobDescription } = req.body || {};
     const resumeText = req.file
       ? await extractResumeText(req.file)
-      : clean(req.body?.resumeText);
-    const jobDescription = clean(req.body?.jobDescription);
-    const safeResumeText = clean(resumeText);
+      : cleanText(req.body?.resumeText);
 
-    if (safeResumeText.length < 50) {
+    const cleanedResumeText = cleanText(resumeText);
+    const cleanedJobDescription = cleanText(jobDescription);
+
+    if (cleanedResumeText.length < 50) {
       return res.status(400).json({
         success: false,
         message: 'We could not extract enough resume text. Try another PDF, DOCX, or DOC file.',
       });
     }
 
-    if (safeResumeText.length > 50000 || jobDescription.length > 30000) {
+    if (cleanedResumeText.length > 50000) {
       return res.status(400).json({
         success: false,
-        message: 'The supplied resume or job description is too long.',
+        message: 'The resume is too long to analyze. Please upload a shorter resume.',
       });
     }
 
-    const analysis = await interviewService.analyzeResume(safeResumeText, jobDescription);
+    if (cleanedJobDescription.length > 30000) {
+      return res.status(400).json({
+        success: false,
+        message: 'The job description is too long. Please shorten it and try again.',
+      });
+    }
+
+    const analysis = await interviewService.analyzeResume(
+      cleanedResumeText,
+      cleanedJobDescription
+    );
 
     return res.json({
       success: true,
@@ -168,7 +194,7 @@ exports.analyzeResume = async (req, res) => {
       source: req.file ? 'uploaded_file' : 'pasted_text',
     });
   } catch (error) {
-    console.error('Analyze resume error:', error);
+    console.error('Analyze resume controller error:', error);
     return res.status(500).json({
       success: false,
       message: error.publicMessage || 'Failed to analyze the resume.',
@@ -185,27 +211,31 @@ exports.getQuestionBank = async (req, res) => {
       language = 'English',
     } = req.body || {};
 
-    const safeRole = clean(role);
-    const safeDifficulty = clean(difficulty).toLowerCase();
+    const cleanRole = cleanText(role);
+    const cleanDifficulty = cleanText(difficulty).toLowerCase();
 
-    if (safeRole.length < 2 || safeRole.length > 100) {
+    if (cleanRole.length < 2 || cleanRole.length > 100) {
       return res.status(400).json({ success: false, message: 'Please provide a valid role title.' });
     }
 
-    if (safeDifficulty !== 'mixed' && !DIFFICULTIES.includes(safeDifficulty)) {
-      return res.status(400).json({ success: false, message: 'Invalid difficulty.' });
+    if (cleanDifficulty !== 'mixed' && !ALLOWED_DIFFICULTIES.includes(cleanDifficulty)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid difficulty. Choose mixed, beginner, intermediate, or expert.',
+      });
     }
 
+    const safeCount = clampInteger(count, 3, 20, 10);
     const questions = await interviewService.getQuestionBank(
-      safeRole,
-      clampInt(count, 3, 20, 10),
-      safeDifficulty,
+      cleanRole,
+      safeCount,
+      cleanDifficulty,
       language
     );
 
     return res.json({ success: true, data: questions });
   } catch (error) {
-    console.error('Question bank error:', error);
+    console.error('Question bank controller error:', error);
     return res.status(500).json({
       success: false,
       message: error.publicMessage || 'Failed to generate the question bank.',
