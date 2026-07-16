@@ -35,7 +35,8 @@ exports.transcribeAudioFile = async (req, res) => {
 
     const text = await transcribeAudio(
       req.file.buffer,
-      req.file.originalname
+      req.file.originalname,
+      req.body?.language
     );
 
     return res.status(200).json({

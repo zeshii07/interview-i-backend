@@ -472,7 +472,7 @@ Return exactly one valid JSON object:
   }
 }
 
-function normalizeAnalysis(payload, hasJobDescription) {
+function normalizeAnalysis(payload, hasJobDescription, language) {
   const normalizeAreas = (value) =>
     Array.isArray(value)
       ? value
@@ -520,11 +520,13 @@ function normalizeAnalysis(payload, hasJobDescription) {
     job_match_score: hasJobDescription
       ? Math.round(clampNumber(payload.job_match_score, 0, 100, 50))
       : null,
+    language,
   };
 }
 
-async function analyzeResume(resumeText, jobDescription = '') {
+async function analyzeResume(resumeText, jobDescription = '', language = 'English') {
   const hasJobDescription = Boolean(String(jobDescription || '').trim());
+  const responseLanguage = safeLanguage(language);
 
   const prompt = `
 Analyze this resume as an ATS and career reviewer.
@@ -548,6 +550,8 @@ Rules:
 - If no job description is supplied, return an empty missing-keywords array and null job_match_score.
 - Keep scores consistent with the written findings.
 - Prioritize high-impact fixes.
+- Write every human-readable value entirely in ${responseLanguage}.
+- Keep JSON property names and suggestion type values in English.
 
 Return exactly one valid JSON object:
 {
@@ -577,7 +581,8 @@ Return exactly one valid JSON object:
         {
           role: 'system',
           content:
-            'You are a conservative, evidence-based resume reviewer. Return exactly one valid JSON object only. Never invent candidate information.',
+            `You are a conservative, evidence-based resume reviewer. Respond in ${responseLanguage}. ` +
+            'Return exactly one valid JSON object only. Never invent candidate information.',
         },
         { role: 'user', content: prompt },
       ],
@@ -590,7 +595,7 @@ Return exactly one valid JSON object:
       'resume analysis'
     );
 
-    return normalizeAnalysis(parsed, hasJobDescription);
+    return normalizeAnalysis(parsed, hasJobDescription, responseLanguage);
   } catch (error) {
     console.error('Error analyzing resume:', error);
     if (error.publicMessage) throw error;

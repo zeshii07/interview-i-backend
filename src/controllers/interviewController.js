@@ -154,7 +154,7 @@ exports.evaluateAnswer = async (req, res) => {
 
 exports.analyzeResume = async (req, res) => {
   try {
-    const { jobDescription } = req.body || {};
+    const { jobDescription, language = 'English' } = req.body || {};
     const resumeText = req.file
       ? await extractResumeText(req.file)
       : cleanText(req.body?.resumeText);
@@ -185,7 +185,8 @@ exports.analyzeResume = async (req, res) => {
 
     const analysis = await interviewService.analyzeResume(
       cleanedResumeText,
-      cleanedJobDescription
+      cleanedJobDescription,
+      language
     );
 
     return res.json({

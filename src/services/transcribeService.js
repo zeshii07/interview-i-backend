@@ -4,6 +4,15 @@ const FormData = require('form-data');
 const GROQ_API_URL =
   'https://api.groq.com/openai/v1/audio/transcriptions';
 
+const TRANSCRIPTION_LANGUAGE_CODES = {
+  english: 'en', urdu: 'ur', hindi: 'hi', arabic: 'ar',
+  spanish: 'es', french: 'fr', german: 'de',
+};
+
+function getLanguageCode(language) {
+  return TRANSCRIPTION_LANGUAGE_CODES[String(language || '').trim().toLowerCase()];
+}
+
 function getMimeType(filename = '') {
   const extension = filename
     .split('.')
@@ -25,7 +34,8 @@ function getMimeType(filename = '') {
 
 async function transcribeAudio(
   fileBuffer,
-  originalName = 'audio.m4a'
+  originalName = 'audio.m4a',
+  language
 ) {
   if (!Buffer.isBuffer(fileBuffer)) {
     throw new Error('Invalid audio buffer');
@@ -53,6 +63,9 @@ async function transcribeAudio(
 
   formData.append('model', 'whisper-large-v3');
   formData.append('response_format', 'json');
+
+  const languageCode = getLanguageCode(language);
+  if (languageCode) formData.append('language', languageCode);
 
   try {
     const response = await axios.post(
