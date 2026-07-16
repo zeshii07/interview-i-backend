@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const interviewController = require('../controllers/interviewController');
 const multer = require('multer');
+const resumePdfController = require('../controllers/resumePdfController');
 
 const resumeUpload = multer({
   storage: multer.memoryStorage(),
@@ -20,5 +21,8 @@ router.post('/generate-question', interviewController.generateQuestion);
 router.post('/evaluate-answer', interviewController.evaluateAnswer);
 router.post('/analyze-resume', resumeUpload.single('resume'), interviewController.analyzeResume);
 router.post('/question-bank', interviewController.getQuestionBank);
+
+// Add this line before module.exports:
+router.post('/generate-resume-pdf', resumePdfController.generateResumePdf);
 
 module.exports = router;

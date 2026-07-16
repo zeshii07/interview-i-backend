@@ -17,6 +17,7 @@
     "groq-sdk": "^1.3.0",
     "multer": "^2.2.0",
     "officeparser": "^7.3.0",
+    "pdfkit": "^0.19.1",
     "word-extractor": "^1.0.4"
   },
   "devDependencies": {
