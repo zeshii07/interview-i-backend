@@ -22,6 +22,9 @@ app.use(express.json({ limit: '10mb' }));
 // Routes
 const interviewRoutes = require('./routes/interviewRoutes');
 app.use('/api/interview', interviewRoutes);
+const resumeRoutes = require('./routes/resumeRoutes');
+
+app.use('/api/resume', resumeRoutes);
 
 app.use((error, _req, res, next) => {
   if (!error) return next();
