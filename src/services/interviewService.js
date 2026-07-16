@@ -342,7 +342,29 @@ function inferQuestionCategory(question, providedCategory) {
 }
 
 function normalizeEvaluation(payload, language) {
-  const rating = clampNumber(payload.rating, 0, 10, 5);
+  const fallbackRating = clampNumber(payload.rating, 0, 10, 5);
+  const structureScore = clampNumber(
+    payload.structure_score,
+    0,
+    10,
+    fallbackRating
+  );
+  const contentScore = clampNumber(
+    payload.content_score,
+    0,
+    10,
+    fallbackRating
+  );
+  const communicationScore = clampNumber(
+    payload.communication_score,
+    0,
+    10,
+    fallbackRating
+  );
+  const rating =
+    contentScore * 0.5 +
+    structureScore * 0.25 +
+    communicationScore * 0.25;
 
   return {
     rating: Math.round(rating * 10) / 10,
@@ -350,11 +372,9 @@ function normalizeEvaluation(payload, language) {
     overall_feedback: String(payload.overall_feedback || '').trim(),
     strengths: safeStringArray(payload.strengths, 4),
     improvements: safeStringArray(payload.improvements, 4),
-    structure_score: Math.round(clampNumber(payload.structure_score, 0, 10, rating)),
-    content_score: Math.round(clampNumber(payload.content_score, 0, 10, rating)),
-    communication_score: Math.round(
-      clampNumber(payload.communication_score, 0, 10, rating)
-    ),
+    structure_score: Math.round(structureScore * 10) / 10,
+    content_score: Math.round(contentScore * 10) / 10,
+    communication_score: Math.round(communicationScore * 10) / 10,
     sample_answer: String(payload.sample_answer || '').trim(),
     follow_up_question: String(payload.follow_up_question || '').trim(),
     language,
@@ -414,6 +434,10 @@ Evaluation rules:
 - Do not invent statements the candidate did not make.
 - The sample answer must match the same difficulty.
 - Keep feedback supportive, direct, and realistic.
+- Score content, structure, and communication independently from evidence in this answer.
+- Do not default to 7 or reuse the same score across categories without evidence.
+- Content score measures correctness and relevance and contributes 50% of the final rating.
+- Structure and communication each contribute 25% of the final rating.
 
 Score meanings:
 0-2: mostly incorrect, irrelevant, or missing
@@ -426,19 +450,15 @@ Language requirement:
 Write every human-readable value in ${responseLanguage}.
 Keep JSON property names unchanged and numeric scores as numbers.
 
-Return exactly one valid JSON object:
-{
-  "rating": 7.0,
-  "rating_max": 10,
-  "overall_feedback": "Brief assessment",
-  "strengths": ["Specific strength"],
-  "improvements": ["Specific actionable improvement"],
-  "structure_score": 7,
-  "content_score": 7,
-  "communication_score": 7,
-  "sample_answer": "A realistic improved answer",
-  "follow_up_question": "One natural follow-up"
-}
+Return exactly one valid JSON object containing these keys:
+- overall_feedback: string
+- strengths: array of specific strings
+- improvements: array of actionable strings
+- structure_score: evidence-based number from 0 through 10
+- content_score: evidence-based number from 0 through 10
+- communication_score: evidence-based number from 0 through 10
+- sample_answer: string
+- follow_up_question: string
 `;
 
   try {
