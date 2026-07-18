@@ -433,6 +433,10 @@ Evaluation rules:
 - Make improvements actionable and tied to missing or unclear content.
 - Do not invent statements the candidate did not make.
 - The sample answer must match the same difficulty.
+- The sample answer must be a fresh model answer written from first principles.
+- Do not copy, lightly edit, or merely paraphrase the candidate answer.
+- Add missing reasoning, technical detail, examples, or steps to the sample answer.
+- Use meaningfully different structure and wording from the candidate response.
 - Keep feedback supportive, direct, and realistic.
 - Score content, structure, and communication independently from evidence in this answer.
 - Do not default to 7 or reuse the same score across categories without evidence.
@@ -481,6 +485,27 @@ Return exactly one valid JSON object containing these keys:
       response.choices?.[0]?.message?.content,
       'answer evaluation'
     );
+
+    if (isNearCopy(userAnswer, parsed.sample_answer)) {
+      try {
+        const distinctSampleAnswer = await generateDistinctSampleAnswer({
+          role,
+          difficulty,
+          category,
+          question,
+          userAnswer,
+          improvements: parsed.improvements,
+          language: responseLanguage,
+        });
+
+        parsed.sample_answer = isNearCopy(userAnswer, distinctSampleAnswer)
+          ? ''
+          : distinctSampleAnswer;
+      } catch (sampleError) {
+        console.error('Distinct sample answer generation failed:', sampleError);
+        parsed.sample_answer = '';
+      }
+    }
 
     return normalizeEvaluation(parsed, responseLanguage);
   } catch (error) {
@@ -542,6 +567,80 @@ function normalizeAnalysis(payload, hasJobDescription, language) {
       : null,
     language,
   };
+}
+
+function answerTokens(value) {
+  return new Set(
+    String(value || '').toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) || []
+  );
+}
+
+function isNearCopy(candidateAnswer, sampleAnswer) {
+  const candidate = answerTokens(candidateAnswer);
+  const sample = answerTokens(sampleAnswer);
+  if (candidate.size < 5 || sample.size < 5) return false;
+
+  let shared = 0;
+  candidate.forEach((token) => {
+    if (sample.has(token)) shared += 1;
+  });
+
+  return shared / Math.min(candidate.size, sample.size) >= 0.72;
+}
+
+async function generateDistinctSampleAnswer({
+  role,
+  difficulty,
+  category,
+  question,
+  userAnswer,
+  improvements,
+  language,
+}) {
+  const response = await jsonCompletion({
+    messages: [
+      {
+        role: 'system',
+        content:
+          `Write an original, high-quality ${difficulty} interview answer in ${language}. ` +
+          'Do not copy, lightly edit, or paraphrase the candidate answer. Return JSON only.',
+      },
+      {
+        role: 'user',
+        content: `
+JSON task: Return an object with one key named sample_answer.
+
+Role: ${role}
+Question category: ${category}
+Question:
+"""
+${question}
+"""
+
+Candidate answer to improve upon, not copy:
+"""
+${userAnswer}
+"""
+
+Missing or weak areas identified:
+${safeStringArray(improvements, 4).map((item) => `- ${item}`).join('\n')}
+
+Write a fresh model answer from first principles. Add relevant reasoning, details,
+examples, or steps the candidate omitted. Use meaningfully different wording and
+structure. Keep it realistic for ${difficulty} level and write entirely in ${language}.
+`,
+      },
+    ],
+    temperature: 0.45,
+    maxCompletionTokens: 900,
+  });
+
+  const parsed = parseJSONObject(
+    response.choices?.[0]?.message?.content,
+    'improved sample answer'
+  );
+
+  return String(parsed.sample_answer || '').trim();
 }
 
 async function analyzeResume(resumeText, jobDescription = '', language = 'English') {
