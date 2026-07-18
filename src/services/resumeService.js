@@ -35,14 +35,23 @@ function safeArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+const SUPPORTED_TEMPLATE_IDS = new Set(['ats-classic', 'corporate-professional', 'european-standard', 'technical-compact']);
+
+function normalizeTemplateId(value) {
+  const templateId = cleanText(value);
+  return SUPPORTED_TEMPLATE_IDS.has(templateId) ? templateId : 'ats-classic';
+}
+
 function sanitizeResumeInput(data) {
   return {
+    templateId: normalizeTemplateId(data.templateId),
     firstName: cleanText(data.firstName),
     lastName: cleanText(data.lastName),
     email: cleanText(data.email),
     phone: cleanText(data.phone),
     location: cleanText(data.location),
     linkedin: cleanText(data.linkedin),
+    github: cleanText(data.github),
     portfolio: cleanText(data.portfolio),
     targetRole: cleanText(data.targetRole),
     jobDescription: cleanText(data.jobDescription),
@@ -133,7 +142,25 @@ function sanitizeResumeInput(data) {
         };
       })
       .filter((item) => item.name || item.issuer || item.year),
+
+    customSections: safeArray(data.customSections)
+      .slice(0, 10)
+      .map((item) => ({
+        title: cleanText(item?.title),
+        content: cleanText(item?.content),
+      }))
+      .filter((item) => item.title && item.content),
   };
+}
+
+function normalizeCustomSections(value) {
+  return safeArray(value)
+    .slice(0, 10)
+    .map((item) => ({
+      title: cleanText(item?.title),
+      content: cleanText(item?.content),
+    }))
+    .filter((item) => item.title && item.content);
 }
 
 function extractJson(content) {
@@ -273,8 +300,10 @@ function normalizeAiResult(original, parsed) {
       phone: original.phone,
       location: original.location,
       linkedin: original.linkedin,
+      github: original.github,
       portfolio: original.portfolio,
       targetRole: original.targetRole,
+      templateId: original.templateId,
 
       summary: cleanText(aiResume.summary),
       experience: normalizeExperience(aiResume.experience),
@@ -290,6 +319,7 @@ function normalizeAiResult(original, parsed) {
       certifications: normalizeCertifications(
         aiResume.certifications
       ),
+      customSections: normalizeCustomSections(aiResume.customSections),
     },
 
     suggestions: safeArray(parsed.suggestions)
@@ -314,12 +344,14 @@ STRICT RULES:
 2. Preserve the meaning of all factual information supplied by the candidate.
 3. Improve grammar, clarity, professionalism, and ATS readability.
 4. Rewrite experience bullets with strong action verbs.
-5. Use job-description keywords only when supported by the candidate's existing information.
-6. Do not add fake numbers or measurable outcomes.
-7. Avoid first-person pronouns.
-8. Avoid markdown, tables, columns, icons, emojis, and decorative symbols.
-9. Keep each experience bullet concise.
-10. Return one valid JSON object only, with no surrounding explanation.
+5. Rewrite vague or informal input into concise, technical, professional resume language. For example, transform a phrase such as "built frontend of app" into a stronger statement about developing the application's frontend interface, without inventing tools, scale, metrics, or results.
+6. Use job-description keywords only when supported by the candidate's existing information.
+7. Do not add fake numbers or measurable outcomes.
+8. Avoid first-person pronouns.
+9. Avoid markdown, tables, columns, icons, emojis, and decorative symbols in resume content.
+10. Keep experience and project bullets concise, specific, and non-repetitive.
+11. Preserve optional custom section titles and improve their wording without changing facts.
+12. Return one valid JSON object only, with no surrounding explanation.
 
 Return exactly this structure:
 
@@ -331,6 +363,7 @@ Return exactly this structure:
     "phone": "",
     "location": "",
     "linkedin": "",
+    "github": "",
     "portfolio": "",
     "targetRole": "",
     "summary": "",
@@ -366,6 +399,12 @@ Return exactly this structure:
         "name": "",
         "issuer": "",
         "year": ""
+      }
+    ],
+    "customSections": [
+      {
+        "title": "",
+        "content": ""
       }
     ]
   },
