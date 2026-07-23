@@ -20,10 +20,10 @@ function resolveGroqClient(config) {
 
 function resolveModel(config) {
   return (
+    process.env.GROQ_MODEL ||
     config?.model ||
     config?.MODEL ||
-    process.env.GROQ_MODEL ||
-    'llama-3.3-70b-versatile'
+    'llama-3.1-8b-instant'
   );
 }
 
@@ -150,6 +150,66 @@ function sanitizeResumeInput(data) {
         content: cleanText(item?.content),
       }))
       .filter((item) => item.title && item.content),
+  };
+}
+
+function createTextBudget(limit) {
+  let remaining = limit;
+
+  return (value, fieldLimit = 500) => {
+    if (remaining <= 0) return '';
+
+    const text = cleanText(value);
+    const allowed = Math.min(fieldLimit, remaining);
+    const result =
+      text.length > allowed
+        ? `${text.slice(0, Math.max(0, allowed - 1)).trimEnd()}…`
+        : text;
+
+    remaining -= result.length;
+    return result;
+  };
+}
+
+// Contact details are copied from the original request after optimization.
+// Excluding them here and bounding editable text prevents oversized Groq calls.
+function prepareResumeForAi(resume) {
+  const take = createTextBudget(9000);
+
+  return {
+    targetRole: take(resume.targetRole, 180),
+    jobDescription: take(resume.jobDescription, 2200),
+    summary: take(resume.summary, 900),
+    experience: resume.experience.slice(0, 8).map((item) => ({
+      role: take(item.role, 160),
+      company: take(item.company, 160),
+      location: take(item.location, 120),
+      duration: take(item.duration, 100),
+      points: item.points.slice(0, 6).map((point) => take(point, 360)).filter(Boolean),
+    })),
+    education: resume.education.slice(0, 8).map((item) => ({
+      degree: take(item.degree, 180),
+      institution: take(item.institution, 180),
+      location: take(item.location, 120),
+      year: take(item.year, 80),
+      gpa: take(item.gpa, 60),
+    })),
+    skills: resume.skills.slice(0, 60).map((skill) => take(skill, 80)).filter(Boolean),
+    projects: resume.projects.slice(0, 8).map((item) => ({
+      name: take(item.name, 160),
+      technologies: take(item.technologies, 300),
+      description: take(item.description, 500),
+      points: item.points.slice(0, 5).map((point) => take(point, 320)).filter(Boolean),
+    })),
+    certifications: resume.certifications.slice(0, 15).map((item) => ({
+      name: take(item.name, 180),
+      issuer: take(item.issuer, 160),
+      year: take(item.year, 80),
+    })),
+    customSections: resume.customSections.slice(0, 8).map((item) => ({
+      title: take(item.title, 120),
+      content: take(item.content, 600),
+    })),
   };
 }
 
@@ -333,88 +393,12 @@ async function generateOptimizedResume(resumeData) {
   const groq = resolveGroqClient(aiConfig);
   const model = resolveModel(aiConfig);
   const sanitized = sanitizeResumeInput(resumeData);
+  const candidate = prepareResumeForAi(sanitized);
 
-  const prompt = `
-You are an expert ATS resume writer.
-
-Optimize the candidate's resume for the target role.
-
-STRICT RULES:
-1. Never invent employers, roles, projects, education, qualifications, skills, certifications, dates, metrics, achievements, or personal details.
-2. Preserve the meaning of all factual information supplied by the candidate.
-3. Improve grammar, clarity, professionalism, and ATS readability.
-4. Rewrite experience bullets with strong action verbs.
-5. Rewrite vague or informal input into concise, technical, professional resume language. For example, transform a phrase such as "built frontend of app" into a stronger statement about developing the application's frontend interface, without inventing tools, scale, metrics, or results.
-6. Use job-description keywords only when supported by the candidate's existing information.
-7. Do not add fake numbers or measurable outcomes.
-8. Avoid first-person pronouns.
-9. Avoid markdown, tables, columns, icons, emojis, and decorative symbols in resume content.
-10. Keep experience and project bullets concise, specific, and non-repetitive.
-11. Preserve optional custom section titles and improve their wording without changing facts.
-12. Return one valid JSON object only, with no surrounding explanation.
-
-Return exactly this structure:
-
-{
-  "resume": {
-    "firstName": "",
-    "lastName": "",
-    "email": "",
-    "phone": "",
-    "location": "",
-    "linkedin": "",
-    "github": "",
-    "portfolio": "",
-    "targetRole": "",
-    "summary": "",
-    "experience": [
-      {
-        "role": "",
-        "company": "",
-        "location": "",
-        "duration": "",
-        "points": [""]
-      }
-    ],
-    "education": [
-      {
-        "degree": "",
-        "institution": "",
-        "location": "",
-        "year": "",
-        "gpa": ""
-      }
-    ],
-    "skills": [""],
-    "projects": [
-      {
-        "name": "",
-        "technologies": "",
-        "description": "",
-        "points": [""]
-      }
-    ],
-    "certifications": [
-      {
-        "name": "",
-        "issuer": "",
-        "year": ""
-      }
-    ],
-    "customSections": [
-      {
-        "title": "",
-        "content": ""
-      }
-    ]
-  },
-  "suggestions": [""]
-}
-
-Candidate information:
-
-${JSON.stringify(sanitized, null, 2)}
-`;
+  const prompt = `Optimize this resume for ATS and its target role.
+Preserve every fact. Never invent names, dates, tools, skills, metrics, employers, education, or achievements. Improve grammar and professional wording, use concise action-led bullets, and use job keywords only when supported. Do not use markdown or first-person language.
+Return JSON only as {"resume":{"summary":"","experience":[{"role":"","company":"","location":"","duration":"","points":[""]}],"education":[{"degree":"","institution":"","location":"","year":"","gpa":""}],"skills":[""],"projects":[{"name":"","technologies":"","description":"","points":[""]}],"certifications":[{"name":"","issuer":"","year":""}],"customSections":[{"title":"","content":""}]},"suggestions":[""]}.
+Keep the same supplied sections and items. Candidate data: ${JSON.stringify(candidate)}`;
 
   const request = {
     model,
@@ -430,7 +414,8 @@ ${JSON.stringify(sanitized, null, 2)}
       },
     ],
     temperature: 0.2,
-    max_tokens: 5000,
+    // Groq TPM includes input plus the requested completion allowance.
+    max_completion_tokens: 2200,
   };
 
   // Groq supports JSON mode for compatible models. If your selected model
@@ -445,18 +430,35 @@ ${JSON.stringify(sanitized, null, 2)}
   try {
     completion = await groq.chat.completions.create(request);
   } catch (error) {
+    const errorMessage =
+      error?.message || error?.error?.message || '';
     const responseFormatRejected =
       error?.status === 400 &&
       /response_format|json_object/i.test(
-        error?.message || error?.error?.message || ''
+        errorMessage
       );
 
-    if (!responseFormatRejected) {
+    if (responseFormatRejected) {
+      delete request.response_format;
+      completion = await groq.chat.completions.create(request);
+    } else if (
+      error?.status === 400 &&
+      /max_completion_tokens/i.test(errorMessage)
+    ) {
+      request.max_tokens = request.max_completion_tokens;
+      delete request.max_completion_tokens;
+      completion = await groq.chat.completions.create(request);
+    } else {
+      if (
+        error?.status === 413 ||
+        /request too large|tokens per minute|TPM/i.test(errorMessage)
+      ) {
+        error.code = 'GROQ_TOKEN_LIMIT';
+        error.publicMessage =
+          'The resume contains too much text to optimize in one request. Shorten unusually long descriptions and try again.';
+      }
       throw error;
     }
-
-    delete request.response_format;
-    completion = await groq.chat.completions.create(request);
   }
 
   const content = completion?.choices?.[0]?.message?.content;

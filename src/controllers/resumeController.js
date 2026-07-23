@@ -58,7 +58,13 @@ exports.generateOptimizedResume = async (req, res) => {
     console.error('Resume optimization error:', error);
 
     const statusCode =
-      error.code === 'INVALID_AI_RESPONSE' ? 502 : 500;
+      error.code === 'INVALID_AI_RESPONSE'
+        ? 502
+        : error.code === 'GROQ_TOKEN_LIMIT'
+          ? 413
+          : error.status === 429
+            ? 429
+            : 500;
 
     return res.status(statusCode).json({
       success: false,
