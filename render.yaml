@@ -1,0 +1,26 @@
+# Render Blueprint — hirely-backend
+# Docs: https://render.com/docs/blueprint-spec
+# Repo: https://github.com/zeshii07/interview-i-backend
+
+services:
+  - type: web
+    name: hirely-backend
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    rootDir: .
+    numInstances: 1
+    autoDeploy: true
+    healthCheckPath: /api/health
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: GROQ_API_KEY
+        sync: false   # set this manually in the Render dashboard (secret)
+      - key: GROQ_MODEL
+        value: llama-3.1-8b-instant
+      - key: CORS_ORIGIN
+        sync: false   # optional: set to your frontend URL to restrict CORS
