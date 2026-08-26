@@ -35,7 +35,7 @@ function safeArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-const SUPPORTED_TEMPLATE_IDS = new Set(['ats-classic', 'corporate-professional', 'european-standard', 'technical-compact']);
+const SUPPORTED_TEMPLATE_IDS = new Set(['ats-classic', 'corporate-professional', 'european-standard', 'technical-compact', 'eu-academic']);
 
 function normalizeTemplateId(value) {
   const templateId = cleanText(value);
@@ -56,6 +56,12 @@ function sanitizeResumeInput(data) {
     targetRole: cleanText(data.targetRole),
     jobDescription: cleanText(data.jobDescription),
     summary: cleanText(data.summary),
+    // Academic-template extras (passed through unchanged; AI does not modify them)
+    nationality: cleanText(data.nationality),
+    dateOfBirth: cleanText(data.dateOfBirth),
+    placeOfBirth: cleanText(data.placeOfBirth),
+    languagesText: cleanText(data.languagesText),
+    referencesText: cleanText(data.referencesText),
 
     experience: safeArray(data.experience)
       .slice(0, 10)
@@ -364,6 +370,12 @@ function normalizeAiResult(original, parsed) {
       portfolio: original.portfolio,
       targetRole: original.targetRole,
       templateId: original.templateId,
+      // Academic-template extras are passed through from user input.
+      nationality: original.nationality,
+      dateOfBirth: original.dateOfBirth,
+      placeOfBirth: original.placeOfBirth,
+      languagesText: original.languagesText,
+      referencesText: original.referencesText,
 
       summary: cleanText(aiResume.summary),
       experience: normalizeExperience(aiResume.experience),
