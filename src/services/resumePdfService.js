@@ -345,27 +345,10 @@ function addReferencesBlock(doc, referencesText) {
   });
 }
 
-function addAcademicFooter(doc) {
-  const theme = getTheme(doc);
-  const footerY = 32;
-  doc.font('Helvetica').fontSize(9).fillColor(theme.muted);
-  doc.text('Place, Date:', doc.page.margins.left, footerY, {
-    width: 200,
-    lineBreak: false,
-  });
-  const signatureLineWidth = 200;
-  const signatureX = doc.page.width - doc.page.margins.right - signatureLineWidth;
-  doc
-    .moveTo(signatureX, footerY + 9)
-    .lineTo(signatureX + signatureLineWidth, footerY + 9)
-    .lineWidth(0.6)
-    .strokeColor(theme.muted)
-    .stroke();
-  doc.font('Helvetica').fontSize(8).fillColor(theme.muted).text('Signature', signatureX, footerY - 8, {
-    width: signatureLineWidth,
-    lineBreak: false,
-  });
-}
+// The Europass/DAAD-style signature footer ("Place, Date" + signature line)
+// was previously rendered here but has been removed at the user's request.
+// The EU Academic template now ends with the References block, with no extra
+// signature/date footer on any page.
 
 function generateResumePdf(resumeData = {}) {
   if (!resumeData || typeof resumeData !== 'object' || Array.isArray(resumeData)) {
@@ -640,13 +623,6 @@ function generateResumePdf(resumeData = {}) {
       pageBottom(doc) + 5,
       { width: contentWidth(doc), align: 'center', lineBreak: false }
     );
-  }
-
-  // Academic signature footer (last page only)
-  if (templateId === 'eu-academic') {
-    const lastIndex = pages.start + pages.count - 1;
-    doc.switchToPage(lastIndex);
-    addAcademicFooter(doc);
   }
 
   doc.end();
