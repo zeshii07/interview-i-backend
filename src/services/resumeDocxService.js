@@ -111,7 +111,7 @@ function contactIconsParagraph(items, theme) {
 
   const glyphMap = {
     email: '\u2709',     // ✉
-    phone: '\u260E',     // ☎
+    phone: '\u1F4DE',    // 📞 phone receiver
     linkedin: 'in',
     github: 'GH',
     portfolio: '\u26D3', // 🔗 (chain)

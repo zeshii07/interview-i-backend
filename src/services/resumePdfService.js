@@ -123,9 +123,12 @@ function drawContactIcon(doc, type, x, y) {
     doc.roundedRect(x, y + 1, 9, 7, 1).stroke();
     doc.moveTo(x, y + 1).lineTo(x + 4.5, y + 5).lineTo(x + 9, y + 1).stroke();
   } else if (type === 'phone') {
-    doc.arc(x + 4.5, y + 4.5, 3.7, 115, 245).stroke();
-    doc.circle(x + 1.2, y + 7.2, 1).fill();
-    doc.circle(x + 7.8, y + 1.8, 1).fill();
+    // Smartphone outline — universally recognizable
+    doc.roundedRect(x + 2, y + 0.5, 5, 8, 1).stroke();
+    // Earpiece line at top
+    doc.moveTo(x + 3.3, y + 2).lineTo(x + 5.7, y + 2).stroke();
+    // Home button dot at bottom
+    doc.circle(x + 4.5, y + 7.2, 0.5).fill();
   } else if (type === 'location') {
     doc.circle(x + 4.5, y + 3.5, 3.3).stroke();
     doc.circle(x + 4.5, y + 3.5, 1.1).stroke();
@@ -144,18 +147,29 @@ function drawContactIcon(doc, type, x, y) {
   doc.restore();
 }
 
-function addContactRows(doc, items) {
+function addContactRows(doc, items, options = {}) {
   if (!items.length) return;
+  const align = options.align || 'left'; // 'left' | 'center'
   const left = doc.page.margins.left;
   const right = doc.page.width - doc.page.margins.right;
-  let x = left;
-  let y = doc.y;
-
-  // Each icon is 9pt wide + ~11pt spacing = 20pt slot. No text labels.
   const slotWidth = 20;
+  const totalWidth = items.length * slotWidth;
+
+  // Compute starting x based on alignment
+  let startX;
+  if (align === 'center') {
+    startX = left + (right - left - totalWidth) / 2;
+    if (startX < left) startX = left;
+  } else {
+    startX = left;
+  }
+
+  let x = startX;
+  let y = doc.y;
 
   items.forEach((item) => {
     if (x + slotWidth > right) {
+      // Wrap to next line, left-aligned
       x = left;
       y += 17;
     }
@@ -289,7 +303,8 @@ function formatEducationDateRange(startDate, endDate) {
   return '';
 }
 
-function addAcademicPersonalDetails(doc, resumeData) {
+function addAcademicPersonalDetails(doc, resumeData, options = {}) {
+  const align = options.align || 'center';
   const parts = [
     safeText(resumeData.nationality) ? `Nationality: ${safeText(resumeData.nationality)}` : '',
     safeText(resumeData.dateOfBirth) ? `Date of birth: ${safeText(resumeData.dateOfBirth)}` : '',
@@ -300,7 +315,7 @@ function addAcademicPersonalDetails(doc, resumeData) {
   doc.font('Helvetica').fontSize(9).fillColor(theme.muted);
   doc.text(parts.join('   |   '), doc.page.margins.left, doc.y, {
     width: contentWidth(doc),
-    align: 'center',
+    align: align,
     lineGap: 1,
   });
   doc.moveDown(1.1);
@@ -389,19 +404,28 @@ function generateResumePdf(resumeData = {}) {
   doc.resumeTheme = theme;
 
   doc.pipe(outputStream);
+
+  // Build contact items once — placement and alignment differ per template.
+  const contactItems = [
+    { type: 'email', label: safeText(resumeData.email), link: `mailto:${safeText(resumeData.email)}` },
+    { type: 'phone', label: safeText(resumeData.phone), link: `tel:${safeText(resumeData.phone)}` },
+    { type: 'linkedin', label: safeText(resumeData.linkedin), link: safeText(resumeData.linkedin) },
+    { type: 'github', label: safeText(resumeData.github), link: safeText(resumeData.github) },
+    { type: 'portfolio', label: safeText(resumeData.portfolio), link: safeText(resumeData.portfolio) },
+    { type: 'location', label: safeText(resumeData.location) },
+  ].filter((item) => item.label);
+
   if (theme.headerStyle === 'academic-photo') {
-    // DAAD-style header: portrait photo top-right, name+target on left
-    const photoSize = 90; // width in pt; 4:5 portrait => height = 112.5
+    // DAAD-style header: portrait photo top-right, name+target+contacts on left
+    const photoSize = 90;
     const photoW = photoSize;
     const photoH = photoSize * 1.25;
     const photoX = doc.page.width - doc.page.margins.right - photoW;
     const photoY = doc.y;
     const leftTextWidth = photoX - doc.page.margins.left - 14;
 
-    // Try to embed the photo from base64 data; if missing or invalid, draw
-    // an initials avatar in a colored rectangle as fallback.
+    // Embed photo or draw initials avatar fallback
     const photoBase64 = safeText(resumeData.photoBase64);
-    const photoMime = safeText(resumeData.photoMimeType) || 'image/jpeg';
     let photoEmbedded = false;
     if (photoBase64) {
       try {
@@ -413,22 +437,27 @@ function generateResumePdf(resumeData = {}) {
       }
     }
     if (!photoEmbedded) {
-      // Initials avatar fallback
       const initials = `${safeText(resumeData.firstName, 'A').charAt(0)}${safeText(resumeData.lastName, 'U').charAt(0)}`.toUpperCase();
       doc.save().fillColor(theme.chip).rect(photoX, photoY, photoW, photoH).fill().restore();
       doc.save().strokeColor(theme.rule).lineWidth(0.75).rect(photoX, photoY, photoW, photoH).stroke().restore();
       doc.font('Helvetica-Bold').fontSize(34).fillColor(theme.blue).text(initials, photoX, photoY + photoH / 2 - 17, { width: photoW, align: 'center' });
     }
 
-    // Name + target role on the left side of the photo
-    const nameY = photoY + 8;
+    // Name + target role + contact icons on the LEFT side of the photo,
+    // stacked vertically and top-aligned with the photo.
+    const nameY = photoY + 4;
     doc.font('Helvetica-Bold').fontSize(22).fillColor(theme.ink).text(fullName, doc.page.margins.left, nameY, { width: leftTextWidth, align: 'left' });
+    let nextY = nameY + 28;
     if (targetRole) {
-      doc.font('Helvetica').fontSize(11).fillColor(theme.blue).text(targetRole, doc.page.margins.left, nameY + 30, { width: leftTextWidth, align: 'left' });
+      doc.font('Helvetica').fontSize(11).fillColor(theme.blue).text(targetRole, doc.page.margins.left, nextY, { width: leftTextWidth, align: 'left' });
+      nextY += 16;
     }
+    // Contact icons immediately below target role, still beside the photo
+    doc.y = nextY + 2;
+    addContactRows(doc, contactItems, { align: 'left' });
 
     // Move cursor below the photo
-    doc.y = photoY + photoH + 8;
+    doc.y = Math.max(doc.y, photoY + photoH + 8);
 
     // Thin centered rule under the header
     const ruleY = doc.y;
@@ -439,7 +468,7 @@ function generateResumePdf(resumeData = {}) {
       .strokeColor(theme.rule)
       .stroke();
     doc.moveDown(0.4);
-    addAcademicPersonalDetails(doc, resumeData);
+    addAcademicPersonalDetails(doc, resumeData, { align: 'left' });
   } else if (theme.headerStyle === 'academic') {
     // Europass-inspired centered header
     doc.font('Helvetica-Bold').fontSize(22).fillColor(theme.ink).text(fullName, { align: 'center' });
@@ -447,6 +476,9 @@ function generateResumePdf(resumeData = {}) {
       doc.font('Helvetica').fontSize(11).fillColor(theme.blue).text(targetRole, { align: 'center' });
     }
     doc.moveDown(0.3);
+    // Contact icons CENTERED immediately under name+target role
+    addContactRows(doc, contactItems, { align: 'center' });
+    // Thin centered rule under the header
     const ruleY = doc.y;
     doc
       .moveTo(doc.page.margins.left + 80, ruleY)
@@ -455,13 +487,15 @@ function generateResumePdf(resumeData = {}) {
       .strokeColor(theme.rule)
       .stroke();
     doc.moveDown(0.4);
-    addAcademicPersonalDetails(doc, resumeData);
+    addAcademicPersonalDetails(doc, resumeData, { align: 'center' });
   } else if (theme.headerStyle === 'european') {
     const headerY = doc.y;
     doc.roundedRect(doc.page.margins.left, headerY, contentWidth(doc), 55, 3).fillColor(theme.blue).fill();
     doc.font('Helvetica-Bold').fontSize(24).fillColor('#FFFFFF').text(fullName, doc.page.margins.left + 15, headerY + 10, { width: contentWidth(doc) - 30 });
     if (targetRole) doc.font('Helvetica-Bold').fontSize(10.5).fillColor('#DDEEF8').text(targetRole, doc.page.margins.left + 15, headerY + 36, { width: contentWidth(doc) - 30 });
     doc.y = headerY + 64;
+    // Contact icons LEFT-aligned immediately below the blue header box
+    addContactRows(doc, contactItems, { align: 'left' });
   } else {
     const centered = theme.headerStyle === 'center';
     doc.font('Helvetica-Bold').fontSize(theme.headerStyle === 'technical' ? 23 : 25).fillColor(theme.ink).text(fullName, { align: centered ? 'center' : 'left' });
@@ -472,17 +506,9 @@ function generateResumePdf(resumeData = {}) {
       doc.moveDown(0.25).moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y).lineWidth(3).strokeColor(theme.blue).stroke();
       doc.moveDown(0.3);
     }
+    // Contact icons — alignment matches the name
+    addContactRows(doc, contactItems, { align: centered ? 'center' : 'left' });
   }
-
-  const contactItems = [
-    { type: 'email', label: safeText(resumeData.email), link: `mailto:${safeText(resumeData.email)}` },
-    { type: 'phone', label: safeText(resumeData.phone), link: `tel:${safeText(resumeData.phone)}` },
-    { type: 'linkedin', label: safeText(resumeData.linkedin), link: safeText(resumeData.linkedin) },
-    { type: 'github', label: safeText(resumeData.github), link: safeText(resumeData.github) },
-    { type: 'portfolio', label: safeText(resumeData.portfolio), link: safeText(resumeData.portfolio) },
-    { type: 'location', label: safeText(resumeData.location) },
-  ].filter((item) => item.label);
-  addContactRows(doc, contactItems);
 
   const summary = safeText(resumeData.summary);
   if (summary) {
