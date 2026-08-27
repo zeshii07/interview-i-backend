@@ -15,6 +15,8 @@ const {
   Packer,
   Paragraph,
   TextRun,
+  ExternalHyperlink,
+  ImageRun,
   HeadingLevel,
   AlignmentType,
   BorderStyle,
@@ -68,12 +70,87 @@ const TEMPLATE_THEMES = {
     ink: '1A2A4F', body: '2C3E50', muted: '7B8794', accent: '1A2A4F', chip: 'E8EEF7', rule: '1A2A4F',
     headerAlign: AlignmentType.CENTER,
   },
+  'academic-photo': {
+    ink: '1A2A4F', body: '2C3E50', muted: '7B8794', accent: '1A2A4F', chip: 'E8EEF7', rule: '1A2A4F',
+    headerAlign: AlignmentType.LEFT,
+  },
 };
 
 function getTheme(templateId) {
   return TEMPLATE_THEMES[templateId] && TEMPLATE_THEMES[templateId].accent
     ? TEMPLATE_THEMES[templateId]
     : TEMPLATE_THEMES['ats-classic'];
+}
+
+/**
+ * Format education date range from start + end (year) fields.
+ *   start=2020, end=2024 -> "2020 - 2024"
+ *   start=2020, end=''   -> "2020 - Present"
+ *   start='',   end=2024 -> "2024"
+ *   start='',   end=''   -> ""
+ */
+function formatEducationDateRange(startDate, endDate) {
+  const start = cleanText(startDate);
+  const end = cleanText(endDate);
+  if (start && end) return `${start} - ${end}`;
+  if (start) return `${start} - Present`;
+  if (end) return end;
+  return '';
+}
+
+// ---------- contact icons (no visible text, only hyperlinked glyphs) ----------
+
+// Returns a Paragraph containing hyperlinked Unicode glyphs for each contact
+// item. Word renders Unicode symbols (✉ ☎ in 🔗) as small icon-like glyphs;
+// clicking them opens mailto:/tel:/https: links. The actual contact string
+// is NOT shown on the page, only the icon glyph.
+function contactIconsParagraph(items, theme) {
+  const children = [];
+  const valid = items.filter((it) => it.label);
+  if (!valid.length) return null;
+
+  const glyphMap = {
+    email: '\u2709',     // ✉
+    phone: '\u260E',     // ☎
+    linkedin: 'in',
+    github: 'GH',
+    portfolio: '\u26D3', // 🔗 (chain)
+    location: '\u25C9',  // ◉ (location dot)
+  };
+
+  valid.forEach((item, idx) => {
+    const glyph = glyphMap[item.type] || '\u25CF'; // ●
+    const runChildren = [
+      new TextRun({
+        text: glyph,
+        size: 22, // 11pt
+        color: hexToDocx(theme.accent),
+        font: 'Helvetica',
+      }),
+    ];
+
+    if (item.link) {
+      children.push(new ExternalHyperlink({ link: item.link, children: runChildren }));
+    } else {
+      children.push(...runChildren);
+    }
+
+    // Spacer between icons
+    if (idx < valid.length - 1) {
+      children.push(new TextRun({
+        text: '    ', // 4 spaces between icons
+        size: 22,
+        color: hexToDocx(theme.body),
+        font: 'Helvetica',
+      }));
+    }
+  });
+
+  return new Paragraph({
+    alignment: theme.headerAlign,
+    spacing: { after: 120 },
+    children,
+  });
 }
 
 // ---------- paragraph builders ----------
@@ -230,39 +307,141 @@ async function generateResumeDocx(resumeData = {}) {
 
   const children = [];
 
-  // --- header (name + target role) ---
-  children.push(new Paragraph({
-    alignment: theme.headerAlign,
-    spacing: { after: 80 },
-    children: [
-      new TextRun({
-        text: fullName,
-        bold: true,
-        size: 44, // 22pt
-        color: hexToDocx(theme.ink),
-        font: 'Helvetica',
-      }),
-    ],
-  }));
+  // --- header ---
+  // For academic-photo: use a 2-column table — name/target on left, photo on right.
+  // For all other templates: simple centered/left-aligned name + target role.
+  if (templateId === 'academic-photo') {
+    // Try to embed the photo from base64 data
+    const photoBase64 = cleanText(resumeData.photoBase64);
+    let photoImageRun = null;
+    if (photoBase64) {
+      try {
+        const buffer = Buffer.from(photoBase64, 'base64');
+        // 4:5 portrait. Width ~1.0 inch, height ~1.25 inch (in EMUs/points).
+        // docx ImageRun uses pixels at 72 DPI for sizing.
+        photoImageRun = new ImageRun({
+          data: buffer,
+          transformation: { width: 95, height: 119 },
+          type: 'jpg',
+        });
+      } catch (err) {
+        console.warn('Failed to embed photo in DOCX:', err.message);
+      }
+    }
 
-  if (targetRole) {
+    const leftCellChildren = [
+      new Paragraph({
+        alignment: AlignmentType.LEFT,
+        spacing: { after: 40 },
+        children: [
+          new TextRun({
+            text: fullName,
+            bold: true,
+            size: 44,
+            color: hexToDocx(theme.ink),
+            font: 'Helvetica',
+          }),
+        ],
+      }),
+    ];
+    if (targetRole) {
+      leftCellChildren.push(new Paragraph({
+        alignment: AlignmentType.LEFT,
+        spacing: { after: 0 },
+        children: [
+          new TextRun({
+            text: targetRole,
+            bold: true,
+            size: 22,
+            color: hexToDocx(theme.accent),
+            font: 'Helvetica',
+          }),
+        ],
+      }));
+    }
+
+    const rightCellChildren = photoImageRun
+      ? [new Paragraph({ children: [photoImageRun] })]
+      : // Fallback: initials avatar (text-based since we can't easily draw shapes in docx)
+        [new Paragraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 240, after: 240 },
+          children: [
+            new TextRun({
+              text: `${firstName.charAt(0) || 'A'}${lastName.charAt(0) || 'U'}`.toUpperCase(),
+              bold: true,
+              size: 56,
+              color: hexToDocx(theme.accent),
+              font: 'Helvetica',
+            }),
+          ],
+        })];
+
+    children.push(new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      borders: {
+        top: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+        bottom: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+        left: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+        right: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+        insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+        insideVertical: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+      },
+      rows: [
+        new TableRow({
+          children: [
+            new TableCell({
+              width: { size: 75, type: WidthType.PERCENTAGE },
+              margins: { top: 0, bottom: 0, left: 0, right: 100 },
+              children: leftCellChildren,
+            }),
+            new TableCell({
+              width: { size: 25, type: WidthType.PERCENTAGE },
+              margins: { top: 0, bottom: 0, left: 100, right: 0 },
+              children: rightCellChildren,
+            }),
+          ],
+        }),
+      ],
+    }));
+
+    // Spacer paragraph after the header table
+    children.push(new Paragraph({ spacing: { after: 80 }, children: [] }));
+  } else {
+    // All other templates: simple header
     children.push(new Paragraph({
       alignment: theme.headerAlign,
-      spacing: { after: 60 },
+      spacing: { after: 80 },
       children: [
         new TextRun({
-          text: targetRole,
-          bold: templateId === 'eu-academic',
-          size: 22, // 11pt
-          color: hexToDocx(theme.accent),
+          text: fullName,
+          bold: true,
+          size: 44, // 22pt
+          color: hexToDocx(theme.ink),
           font: 'Helvetica',
         }),
       ],
     }));
+
+    if (targetRole) {
+      children.push(new Paragraph({
+        alignment: theme.headerAlign,
+        spacing: { after: 60 },
+        children: [
+          new TextRun({
+            text: targetRole,
+            bold: templateId === 'eu-academic',
+            size: 22, // 11pt
+            color: hexToDocx(theme.accent),
+            font: 'Helvetica',
+          }),
+        ],
+      }));
+    }
   }
 
   // academic personal details line
-  if (templateId === 'eu-academic') {
+  if (templateId === 'eu-academic' || templateId === 'academic-photo') {
     const parts = [
       cleanText(resumeData.nationality) ? `Nationality: ${cleanText(resumeData.nationality)}` : '',
       cleanText(resumeData.dateOfBirth) ? `Date of birth: ${cleanText(resumeData.dateOfBirth)}` : '',
@@ -284,35 +463,33 @@ async function generateResumeDocx(resumeData = {}) {
     }
   }
 
-  // contact line
+  // contact icons (no visible text — only hyperlinked Unicode glyphs)
+  const email = cleanText(resumeData.email);
+  const phone = cleanText(resumeData.phone);
+  const location = cleanText(resumeData.location);
+  const linkedin = cleanText(resumeData.linkedin);
+  const github = cleanText(resumeData.github);
+  const portfolio = cleanText(resumeData.portfolio);
+
   const contactItems = [
-    cleanText(resumeData.email),
-    cleanText(resumeData.phone),
-    cleanText(resumeData.location),
-    cleanText(resumeData.linkedin),
-    cleanText(resumeData.github),
-    cleanText(resumeData.portfolio),
-  ].filter(Boolean);
+    { type: 'email',    label: email,    link: email ? `mailto:${email}` : '' },
+    { type: 'phone',    label: phone,    link: phone ? `tel:${phone.replace(/\s+/g, '')}` : '' },
+    { type: 'location', label: location, link: '' },
+    { type: 'linkedin', label: linkedin, link: linkedin ? (linkedin.startsWith('http') ? linkedin : `https://${linkedin}`) : '' },
+    { type: 'github',   label: github,   link: github ? (github.startsWith('http') ? github : `https://${github}`) : '' },
+    { type: 'portfolio',label: portfolio,link: portfolio ? (portfolio.startsWith('http') ? portfolio : `https://${portfolio}`) : '' },
+  ].filter((it) => it.label);
+
   if (contactItems.length) {
-    children.push(new Paragraph({
-      alignment: theme.headerAlign,
-      spacing: { after: 120 },
-      children: [
-        new TextRun({
-          text: contactItems.join('   |   '),
-          size: 18,
-          color: hexToDocx(theme.body),
-          font: 'Helvetica',
-        }),
-      ],
-    }));
+    const iconsPara = contactIconsParagraph(contactItems, theme);
+    if (iconsPara) children.push(iconsPara);
   }
 
   // summary / personal statement
   const summary = cleanText(resumeData.summary);
   if (summary) {
     children.push(sectionHeading(
-      templateId === 'eu-academic' ? 'Personal Statement' : 'Summary',
+      (templateId === 'eu-academic' || templateId === 'academic-photo') ? 'Personal Statement' : 'Summary',
       theme
     ));
     children.push(bodyParagraph(summary, theme));
@@ -321,21 +498,25 @@ async function generateResumeDocx(resumeData = {}) {
   // ============================================================
   // EU ACADEMIC — Europass-style section order
   // ============================================================
-  if (templateId === 'eu-academic') {
+  if (templateId === 'eu-academic' || templateId === 'academic-photo') {
     const education = safeArray(resumeData.education);
     if (education.length) {
       children.push(sectionHeading('Education', theme));
       education.forEach((item) => {
+        // Line 1: degree (left) + gpa (right)
         children.push(headingRow(
           cleanText(item?.degree, 'Qualification'),
-          cleanText(item?.gpa) || cleanText(item?.year),
+          cleanText(item?.gpa),
           theme
         ));
-        if (item?.institution) {
-          children.push(subheadingRow(cleanText(item?.institution), cleanText(item?.location), theme));
+        // Line 2: institution (left) + date range (right)
+        const dateRange = formatEducationDateRange(item?.startDate, item?.year);
+        if (cleanText(item?.institution) || dateRange) {
+          children.push(subheadingRow(cleanText(item?.institution), dateRange, theme));
         }
-        if (item?.gpa && item?.year) {
-          children.push(metaRow(cleanText(item?.year), '', theme));
+        // Line 3: location
+        if (item?.location) {
+          children.push(metaRow(cleanText(item?.location), '', theme));
         }
       });
     }
@@ -461,9 +642,17 @@ async function generateResumeDocx(resumeData = {}) {
     if (education.length) {
       children.push(sectionHeading('Education', theme));
       education.forEach((item) => {
+        // Line 1: degree (left) + gpa (right)
         children.push(headingRow(cleanText(item?.degree, 'Qualification'), cleanText(item?.gpa), theme));
-        children.push(subheadingRow(cleanText(item?.institution), '', theme));
-        children.push(metaRow(cleanText(item?.year), cleanText(item?.location), theme));
+        // Line 2: institution (left) + date range (right)
+        const dateRange = formatEducationDateRange(item?.startDate, item?.year);
+        if (cleanText(item?.institution) || dateRange) {
+          children.push(subheadingRow(cleanText(item?.institution), dateRange, theme));
+        }
+        // Line 3: location
+        if (item?.location) {
+          children.push(metaRow(cleanText(item?.location), '', theme));
+        }
       });
     }
 

@@ -17,6 +17,7 @@ const TEMPLATES = {
   'european-standard': { ...COLORS, id: 'european-standard', ink: '#18354A', body: '#304A5D', muted: '#687F8E', blue: '#005B96', chip: '#E8F3F9', rule: '#005B96', lightRule: '#B5D1E1', headingStyle: 'european', headerStyle: 'european' },
   'technical-compact': { ...COLORS, id: 'technical-compact', ink: '#193B38', body: '#2E4946', muted: '#687C79', blue: '#0F766E', chip: '#E5F4F1', rule: '#0F766E', lightRule: '#B5D8D3', headingStyle: 'technical', headerStyle: 'technical' },
   'eu-academic': { ...COLORS, id: 'eu-academic', ink: '#1A2A4F', body: '#2C3E50', muted: '#7B8794', blue: '#1A2A4F', chip: '#E8EEF7', rule: '#1A2A4F', lightRule: '#C5CFDD', headingStyle: 'academic', headerStyle: 'academic' },
+  'academic-photo': { ...COLORS, id: 'academic-photo', ink: '#1A2A4F', body: '#2C3E50', muted: '#7B8794', blue: '#1A2A4F', chip: '#E8EEF7', rule: '#1A2A4F', lightRule: '#C5CFDD', headingStyle: 'academic', headerStyle: 'academic-photo' },
 };
 
 function getTheme(doc) {
@@ -150,26 +151,22 @@ function addContactRows(doc, items) {
   let x = left;
   let y = doc.y;
 
+  // Each icon is 9pt wide + ~11pt spacing = 20pt slot. No text labels.
+  const slotWidth = 20;
+
   items.forEach((item) => {
-    doc.font('Helvetica-Bold').fontSize(8.7);
-    const labelWidth = Math.min(doc.widthOfString(item.label), 170);
-    const itemWidth = 13 + labelWidth + 17;
-    if (x + itemWidth > right) {
+    if (x + slotWidth > right) {
       x = left;
       y += 17;
     }
     drawContactIcon(doc, item.type, x, y + 1);
-    doc
-      .font('Helvetica-Bold')
-      .fontSize(8.7)
-      .fillColor(getTheme(doc).body)
-      .text(item.label, x + 13, y, {
-        width: labelWidth + 2,
-        lineBreak: false,
-        link: item.link,
-        underline: false,
-      });
-    x += itemWidth;
+
+    // Add a clickable link annotation over the icon area so tapping the icon
+    // opens the email/phone/URL. The annotation is invisible (no border).
+    if (item.link) {
+      doc.link(x, y, slotWidth, 11, item.link);
+    }
+    x += slotWidth;
   });
   doc.y = y + 15;
 }
@@ -276,6 +273,22 @@ function addCustomSection(doc, section) {
 
 // ---------- academic template helpers ----------
 
+/**
+ * Format education date range from start + end (year) fields.
+ *   start=2020, end=2024 -> "2020 - 2024"
+ *   start=2020, end=''   -> "2020 - Present"
+ *   start='',   end=2024 -> "2024"
+ *   start='',   end=''   -> ""
+ */
+function formatEducationDateRange(startDate, endDate) {
+  const start = safeText(startDate);
+  const end = safeText(endDate);
+  if (start && end) return `${start} - ${end}`;
+  if (start) return `${start} - Present`;
+  if (end) return end;
+  return '';
+}
+
 function addAcademicPersonalDetails(doc, resumeData) {
   const parts = [
     safeText(resumeData.nationality) ? `Nationality: ${safeText(resumeData.nationality)}` : '',
@@ -376,7 +389,58 @@ function generateResumePdf(resumeData = {}) {
   doc.resumeTheme = theme;
 
   doc.pipe(outputStream);
-  if (theme.headerStyle === 'academic') {
+  if (theme.headerStyle === 'academic-photo') {
+    // DAAD-style header: portrait photo top-right, name+target on left
+    const photoSize = 90; // width in pt; 4:5 portrait => height = 112.5
+    const photoW = photoSize;
+    const photoH = photoSize * 1.25;
+    const photoX = doc.page.width - doc.page.margins.right - photoW;
+    const photoY = doc.y;
+    const leftTextWidth = photoX - doc.page.margins.left - 14;
+
+    // Try to embed the photo from base64 data; if missing or invalid, draw
+    // an initials avatar in a colored rectangle as fallback.
+    const photoBase64 = safeText(resumeData.photoBase64);
+    const photoMime = safeText(resumeData.photoMimeType) || 'image/jpeg';
+    let photoEmbedded = false;
+    if (photoBase64) {
+      try {
+        const buffer = Buffer.from(photoBase64, 'base64');
+        doc.image(buffer, photoX, photoY, { width: photoW, height: photoH });
+        photoEmbedded = true;
+      } catch (err) {
+        console.warn('Failed to embed photo:', err.message);
+      }
+    }
+    if (!photoEmbedded) {
+      // Initials avatar fallback
+      const initials = `${safeText(resumeData.firstName, 'A').charAt(0)}${safeText(resumeData.lastName, 'U').charAt(0)}`.toUpperCase();
+      doc.save().fillColor(theme.chip).rect(photoX, photoY, photoW, photoH).fill().restore();
+      doc.save().strokeColor(theme.rule).lineWidth(0.75).rect(photoX, photoY, photoW, photoH).stroke().restore();
+      doc.font('Helvetica-Bold').fontSize(34).fillColor(theme.blue).text(initials, photoX, photoY + photoH / 2 - 17, { width: photoW, align: 'center' });
+    }
+
+    // Name + target role on the left side of the photo
+    const nameY = photoY + 8;
+    doc.font('Helvetica-Bold').fontSize(22).fillColor(theme.ink).text(fullName, doc.page.margins.left, nameY, { width: leftTextWidth, align: 'left' });
+    if (targetRole) {
+      doc.font('Helvetica').fontSize(11).fillColor(theme.blue).text(targetRole, doc.page.margins.left, nameY + 30, { width: leftTextWidth, align: 'left' });
+    }
+
+    // Move cursor below the photo
+    doc.y = photoY + photoH + 8;
+
+    // Thin centered rule under the header
+    const ruleY = doc.y;
+    doc
+      .moveTo(doc.page.margins.left + 80, ruleY)
+      .lineTo(doc.page.width - doc.page.margins.right - 80, ruleY)
+      .lineWidth(0.75)
+      .strokeColor(theme.rule)
+      .stroke();
+    doc.moveDown(0.4);
+    addAcademicPersonalDetails(doc, resumeData);
+  } else if (theme.headerStyle === 'academic') {
     // Europass-inspired centered header
     doc.font('Helvetica-Bold').fontSize(22).fillColor(theme.ink).text(fullName, { align: 'center' });
     if (targetRole) {
@@ -422,11 +486,11 @@ function generateResumePdf(resumeData = {}) {
 
   const summary = safeText(resumeData.summary);
   if (summary) {
-    addSectionHeading(doc, templateId === 'eu-academic' ? 'Personal Statement' : 'Summary');
+    addSectionHeading(doc, (templateId === 'eu-academic' || templateId === 'academic-photo') ? 'Personal Statement' : 'Summary');
     addParagraph(doc, summary);
   }
 
-  if (templateId === 'eu-academic') {
+  if (templateId === 'eu-academic' || templateId === 'academic-photo') {
     // ===========================================================
     // EU ACADEMIC — Europass-style section order
     // (Education first, then projects, experience, skills,
@@ -437,9 +501,17 @@ function generateResumePdf(resumeData = {}) {
     if (education.length) {
       addSectionHeading(doc, 'Education');
       education.forEach((item, index) => {
-        addHeadingRow(doc, safeText(item?.degree, 'Qualification'), safeText(item?.gpa) || safeText(item?.year));
-        if (item?.institution) addSubheadingRow(doc, safeText(item?.institution), safeText(item?.location));
-        if (item?.gpa && item?.year) addMetaRow(doc, safeText(item?.year), '');
+        // Line 1: degree (left) + gpa (right)
+        addHeadingRow(doc, safeText(item?.degree, 'Qualification'), safeText(item?.gpa));
+        // Line 2: institution (left) + date range (right)
+        const dateRange = formatEducationDateRange(item?.startDate, item?.year);
+        if (item?.institution || dateRange) {
+          addSubheadingRow(doc, safeText(item?.institution), dateRange);
+        }
+        // Line 3: location
+        if (item?.location) {
+          addMetaRow(doc, safeText(item?.location), '');
+        }
         if (index < education.length - 1) doc.moveDown(0.35);
       });
     }
@@ -530,9 +602,17 @@ function generateResumePdf(resumeData = {}) {
     if (education.length) {
       addSectionHeading(doc, 'Education');
       education.forEach((item, index) => {
+        // Line 1: degree (left) + gpa (right)
         addHeadingRow(doc, safeText(item?.degree, 'Qualification'), safeText(item?.gpa));
-        addSubheadingRow(doc, safeText(item?.institution), '');
-        addMetaRow(doc, safeText(item?.year), safeText(item?.location));
+        // Line 2: institution (left) + date range (right)
+        const dateRange = formatEducationDateRange(item?.startDate, item?.year);
+        if (item?.institution || dateRange) {
+          addSubheadingRow(doc, safeText(item?.institution), dateRange);
+        }
+        // Line 3: location
+        if (item?.location) {
+          addMetaRow(doc, safeText(item?.location), '');
+        }
         if (index < education.length - 1) doc.moveDown(0.35);
       });
     }

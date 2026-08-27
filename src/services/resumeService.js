@@ -35,7 +35,7 @@ function safeArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-const SUPPORTED_TEMPLATE_IDS = new Set(['ats-classic', 'corporate-professional', 'european-standard', 'technical-compact', 'eu-academic']);
+const SUPPORTED_TEMPLATE_IDS = new Set(['ats-classic', 'corporate-professional', 'european-standard', 'technical-compact', 'eu-academic', 'academic-photo']);
 
 function normalizeTemplateId(value) {
   const templateId = cleanText(value);
@@ -62,6 +62,9 @@ function sanitizeResumeInput(data) {
     placeOfBirth: cleanText(data.placeOfBirth),
     languagesText: cleanText(data.languagesText),
     referencesText: cleanText(data.referencesText),
+    // Photo (academic-photo template only) — passed through unchanged
+    photoBase64: cleanText(data.photoBase64),
+    photoMimeType: cleanText(data.photoMimeType),
 
     experience: safeArray(data.experience)
       .slice(0, 10)
@@ -91,6 +94,7 @@ function sanitizeResumeInput(data) {
         institution: cleanText(item?.institution),
         location: cleanText(item?.location),
         year: cleanText(item?.year),
+        startDate: cleanText(item?.startDate),
         gpa: cleanText(item?.gpa),
       }))
       .filter(
@@ -198,6 +202,7 @@ function prepareResumeForAi(resume) {
       institution: take(item.institution, 180),
       location: take(item.location, 120),
       year: take(item.year, 80),
+      startDate: take(item.startDate, 80),
       gpa: take(item.gpa, 60),
     })),
     skills: resume.skills.slice(0, 60).map((skill) => take(skill, 80)).filter(Boolean),
@@ -295,6 +300,7 @@ function normalizeEducation(value) {
       institution: cleanText(item?.institution),
       location: cleanText(item?.location),
       year: cleanText(item?.year),
+      startDate: cleanText(item?.startDate),
       gpa: cleanText(item?.gpa),
     }))
     .filter(
@@ -303,6 +309,7 @@ function normalizeEducation(value) {
         item.institution ||
         item.location ||
         item.year ||
+        item.startDate ||
         item.gpa
     );
 }
@@ -376,6 +383,9 @@ function normalizeAiResult(original, parsed) {
       placeOfBirth: original.placeOfBirth,
       languagesText: original.languagesText,
       referencesText: original.referencesText,
+      // Photo (academic-photo template only)
+      photoBase64: original.photoBase64,
+      photoMimeType: original.photoMimeType,
 
       summary: cleanText(aiResume.summary),
       experience: normalizeExperience(aiResume.experience),
