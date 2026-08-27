@@ -305,20 +305,46 @@ async function generateResumeDocx(resumeData = {}) {
     : 'ats-classic';
   const theme = getTheme(templateId);
 
+  // Build contact items once — used by all header branches.
+  const email = cleanText(resumeData.email);
+  const phone = cleanText(resumeData.phone);
+  const location = cleanText(resumeData.location);
+  const linkedin = cleanText(resumeData.linkedin);
+  const github = cleanText(resumeData.github);
+  const portfolio = cleanText(resumeData.portfolio);
+
+  const contactItems = [
+    { type: 'email',    label: email,    link: email ? `mailto:${email}` : '' },
+    { type: 'phone',    label: phone,    link: phone ? `tel:${phone.replace(/\s+/g, '')}` : '' },
+    { type: 'location', label: location, link: '' },
+    { type: 'linkedin', label: linkedin, link: linkedin ? (linkedin.startsWith('http') ? linkedin : `https://${linkedin}`) : '' },
+    { type: 'github',   label: github,   link: github ? (github.startsWith('http') ? github : `https://${github}`) : '' },
+    { type: 'portfolio',label: portfolio,link: portfolio ? (portfolio.startsWith('http') ? portfolio : `https://${portfolio}`) : '' },
+  ].filter((it) => it.label);
+
   const children = [];
 
   // --- header ---
   // For academic-photo: use a 2-column table — name/target on left, photo on right.
   // For all other templates: simple centered/left-aligned name + target role.
   if (templateId === 'academic-photo') {
+    // DAAD-style header with two horizontal rules:
+    //   [Name]                        [Photo]
+    //   ════════════════════════════════════════  (rule 1)
+    //   [Target Role]                  [Photo]
+    //   [Contact Icons]                [Photo]
+    //   Nationality: X                 [Photo]
+    //   Date of birth: Y               [Photo]
+    //   Place of birth: Z              [Photo]
+    //   ════════════════════════════════════════  (rule 2)
+    //   [Personal Statement heading + content]
+
     // Try to embed the photo from base64 data
     const photoBase64 = cleanText(resumeData.photoBase64);
     let photoImageRun = null;
     if (photoBase64) {
       try {
         const buffer = Buffer.from(photoBase64, 'base64');
-        // 4:5 portrait. Width ~1.0 inch, height ~1.25 inch (in EMUs/points).
-        // docx ImageRun uses pixels at 72 DPI for sizing.
         photoImageRun = new ImageRun({
           data: buffer,
           transformation: { width: 95, height: 119 },
@@ -329,54 +355,77 @@ async function generateResumeDocx(resumeData = {}) {
       }
     }
 
+    // Build the LEFT cell content: name, rule1, target, contacts, personal details
     const leftCellChildren = [
+      // Name
       new Paragraph({
         alignment: AlignmentType.LEFT,
         spacing: { after: 40 },
         children: [
-          new TextRun({
-            text: fullName,
-            bold: true,
-            size: 44,
-            color: hexToDocx(theme.ink),
-            font: 'Helvetica',
-          }),
+          new TextRun({ text: fullName, bold: true, size: 44, color: hexToDocx(theme.ink), font: 'Helvetica' }),
         ],
       }),
+      // Rule 1 (bottom border on an empty paragraph)
+      new Paragraph({
+        spacing: { after: 60 },
+        border: { bottom: { color: hexToDocx(theme.rule), space: 1, style: BorderStyle.SINGLE, size: 6 } },
+        children: [],
+      }),
     ];
+
+    // Target role
     if (targetRole) {
       leftCellChildren.push(new Paragraph({
         alignment: AlignmentType.LEFT,
-        spacing: { after: 0 },
+        spacing: { after: 40 },
         children: [
-          new TextRun({
-            text: targetRole,
-            bold: true,
-            size: 22,
-            color: hexToDocx(theme.accent),
-            font: 'Helvetica',
-          }),
+          new TextRun({ text: targetRole, bold: true, size: 22, color: hexToDocx(theme.accent), font: 'Helvetica' }),
         ],
       }));
     }
 
+    // Contact icons (hyperlinked Unicode glyphs)
+    const contactIconsPara = contactIconsParagraph(contactItems, theme);
+    if (contactIconsPara) leftCellChildren.push(contactIconsPara);
+
+    // Personal details lines
+    const personalLines = [
+      cleanText(resumeData.nationality) ? `Nationality: ${cleanText(resumeData.nationality)}` : '',
+      cleanText(resumeData.dateOfBirth) ? `Date of birth: ${cleanText(resumeData.dateOfBirth)}` : '',
+      cleanText(resumeData.placeOfBirth) ? `Place of birth: ${cleanText(resumeData.placeOfBirth)}` : '',
+    ].filter(Boolean);
+    personalLines.forEach((line) => {
+      leftCellChildren.push(new Paragraph({
+        alignment: AlignmentType.LEFT,
+        spacing: { after: 20 },
+        children: [
+          new TextRun({ text: line, size: 18, color: hexToDocx(theme.muted), font: 'Helvetica' }),
+        ],
+      }));
+    });
+
+    // Rule 2 (bottom border on an empty paragraph, inside the left cell)
+    leftCellChildren.push(new Paragraph({
+      spacing: { after: 0 },
+      border: { bottom: { color: hexToDocx(theme.rule), space: 1, style: BorderStyle.SINGLE, size: 6 } },
+      children: [],
+    }));
+
+    // RIGHT cell: photo or initials fallback
     const rightCellChildren = photoImageRun
       ? [new Paragraph({ children: [photoImageRun] })]
-      : // Fallback: initials avatar (text-based since we can't easily draw shapes in docx)
-        [new Paragraph({
+      : [new Paragraph({
           alignment: AlignmentType.CENTER,
           spacing: { before: 240, after: 240 },
           children: [
             new TextRun({
               text: `${firstName.charAt(0) || 'A'}${lastName.charAt(0) || 'U'}`.toUpperCase(),
-              bold: true,
-              size: 56,
-              color: hexToDocx(theme.accent),
-              font: 'Helvetica',
+              bold: true, size: 56, color: hexToDocx(theme.accent), font: 'Helvetica',
             }),
           ],
         })];
 
+    // 2-column table: left = details, right = photo (rowspan via single row)
     children.push(new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
       borders: {
@@ -399,6 +448,7 @@ async function generateResumeDocx(resumeData = {}) {
               width: { size: 25, type: WidthType.PERCENTAGE },
               margins: { top: 0, bottom: 0, left: 100, right: 0 },
               children: rightCellChildren,
+              verticalAlign: 'top',
             }),
           ],
         }),
@@ -464,22 +514,7 @@ async function generateResumeDocx(resumeData = {}) {
   }
 
   // contact icons (no visible text — only hyperlinked Unicode glyphs)
-  const email = cleanText(resumeData.email);
-  const phone = cleanText(resumeData.phone);
-  const location = cleanText(resumeData.location);
-  const linkedin = cleanText(resumeData.linkedin);
-  const github = cleanText(resumeData.github);
-  const portfolio = cleanText(resumeData.portfolio);
-
-  const contactItems = [
-    { type: 'email',    label: email,    link: email ? `mailto:${email}` : '' },
-    { type: 'phone',    label: phone,    link: phone ? `tel:${phone.replace(/\s+/g, '')}` : '' },
-    { type: 'location', label: location, link: '' },
-    { type: 'linkedin', label: linkedin, link: linkedin ? (linkedin.startsWith('http') ? linkedin : `https://${linkedin}`) : '' },
-    { type: 'github',   label: github,   link: github ? (github.startsWith('http') ? github : `https://${github}`) : '' },
-    { type: 'portfolio',label: portfolio,link: portfolio ? (portfolio.startsWith('http') ? portfolio : `https://${portfolio}`) : '' },
-  ].filter((it) => it.label);
-
+  // contactItems was built earlier, before the header section.
   if (contactItems.length) {
     const iconsPara = contactIconsParagraph(contactItems, theme);
     if (iconsPara) children.push(iconsPara);

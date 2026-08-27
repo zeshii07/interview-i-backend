@@ -23,7 +23,7 @@ function resolveModel(config) {
     process.env.GROQ_MODEL ||
     config?.model ||
     config?.MODEL ||
-    'llama-3.1-8b-instant'
+    'openai/gpt-oss-20b'
   );
 }
 

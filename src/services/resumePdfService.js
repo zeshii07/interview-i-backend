@@ -416,15 +416,26 @@ function generateResumePdf(resumeData = {}) {
   ].filter((item) => item.label);
 
   if (theme.headerStyle === 'academic-photo') {
-    // DAAD-style header: portrait photo top-right, name+target+contacts on left
+    // DAAD-style header with two horizontal rules:
+    //   Line 1: [Name]                    [Photo]
+    //   ════════════════════════════════════════  (rule 1)
+    //   [Target Role]                      [Photo]
+    //   [Contact Icons]                    [Photo]
+    //   Nationality: X                     [Photo]
+    //   Date of birth: Y                   [Photo]
+    //   Place of birth: Z                  [Photo]
+    //   ════════════════════════════════════════  (rule 2)
+    //   [Personal Statement heading + content]
+
     const photoSize = 90;
     const photoW = photoSize;
     const photoH = photoSize * 1.25;
     const photoX = doc.page.width - doc.page.margins.right - photoW;
     const photoY = doc.y;
     const leftTextWidth = photoX - doc.page.margins.left - 14;
+    const leftX = doc.page.margins.left;
 
-    // Embed photo or draw initials avatar fallback
+    // --- Photo (top-right) ---
     const photoBase64 = safeText(resumeData.photoBase64);
     let photoEmbedded = false;
     if (photoBase64) {
@@ -443,32 +454,44 @@ function generateResumePdf(resumeData = {}) {
       doc.font('Helvetica-Bold').fontSize(34).fillColor(theme.blue).text(initials, photoX, photoY + photoH / 2 - 17, { width: photoW, align: 'center' });
     }
 
-    // Name + target role + contact icons on the LEFT side of the photo,
-    // stacked vertically and top-aligned with the photo.
+    // --- Name (top-left, beside photo) ---
     const nameY = photoY + 4;
-    doc.font('Helvetica-Bold').fontSize(22).fillColor(theme.ink).text(fullName, doc.page.margins.left, nameY, { width: leftTextWidth, align: 'left' });
-    let nextY = nameY + 28;
+    doc.font('Helvetica-Bold').fontSize(22).fillColor(theme.ink).text(fullName, leftX, nameY, { width: leftTextWidth, align: 'left' });
+
+    // --- Rule 1: under the name, full width ---
+    let ruleY = nameY + 28;
+    doc.moveTo(leftX, ruleY).lineTo(doc.page.width - doc.page.margins.right, ruleY).lineWidth(0.75).strokeColor(theme.rule).stroke();
+
+    // --- Target role ---
+    let nextY = ruleY + 6;
     if (targetRole) {
-      doc.font('Helvetica').fontSize(11).fillColor(theme.blue).text(targetRole, doc.page.margins.left, nextY, { width: leftTextWidth, align: 'left' });
+      doc.font('Helvetica').fontSize(11).fillColor(theme.blue).text(targetRole, leftX, nextY, { width: leftTextWidth, align: 'left' });
       nextY += 16;
     }
-    // Contact icons immediately below target role, still beside the photo
+
+    // --- Contact icons ---
     doc.y = nextY + 2;
     addContactRows(doc, contactItems, { align: 'left' });
 
-    // Move cursor below the photo
+    // --- Personal details (Nationality | DOB | POB) as separate lines ---
+    const personalLines = [
+      safeText(resumeData.nationality) ? `Nationality: ${safeText(resumeData.nationality)}` : '',
+      safeText(resumeData.dateOfBirth) ? `Date of birth: ${safeText(resumeData.dateOfBirth)}` : '',
+      safeText(resumeData.placeOfBirth) ? `Place of birth: ${safeText(resumeData.placeOfBirth)}` : '',
+    ].filter(Boolean);
+
+    personalLines.forEach((line) => {
+      doc.font('Helvetica').fontSize(9).fillColor(theme.muted).text(line, leftX, doc.y, { width: leftTextWidth, align: 'left', lineGap: 1 });
+      doc.moveDown(0.9);
+    });
+
+    // --- Move cursor below the photo (whichever is lower) ---
     doc.y = Math.max(doc.y, photoY + photoH + 8);
 
-    // Thin centered rule under the header
-    const ruleY = doc.y;
-    doc
-      .moveTo(doc.page.margins.left + 80, ruleY)
-      .lineTo(doc.page.width - doc.page.margins.right - 80, ruleY)
-      .lineWidth(0.75)
-      .strokeColor(theme.rule)
-      .stroke();
+    // --- Rule 2: full width, separates header from body ---
+    ruleY = doc.y;
+    doc.moveTo(leftX, ruleY).lineTo(doc.page.width - doc.page.margins.right, ruleY).lineWidth(0.75).strokeColor(theme.rule).stroke();
     doc.moveDown(0.4);
-    addAcademicPersonalDetails(doc, resumeData, { align: 'left' });
   } else if (theme.headerStyle === 'academic') {
     // Europass-inspired centered header
     doc.font('Helvetica-Bold').fontSize(22).fillColor(theme.ink).text(fullName, { align: 'center' });
