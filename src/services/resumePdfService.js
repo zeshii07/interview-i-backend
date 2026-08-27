@@ -427,9 +427,8 @@ function generateResumePdf(resumeData = {}) {
     //   ════════════════════════════════════════  (rule 2)
     //   [Personal Statement heading + content]
 
-    const photoSize = 90;
-    const photoW = photoSize;
-    const photoH = photoSize * 1.25;
+    const photoW = 110;
+    const photoH = 138; // 4:5 portrait, larger
     const photoX = doc.page.width - doc.page.margins.right - photoW;
     const photoY = doc.y;
     const leftTextWidth = photoX - doc.page.margins.left - 14;
@@ -451,26 +450,26 @@ function generateResumePdf(resumeData = {}) {
       const initials = `${safeText(resumeData.firstName, 'A').charAt(0)}${safeText(resumeData.lastName, 'U').charAt(0)}`.toUpperCase();
       doc.save().fillColor(theme.chip).rect(photoX, photoY, photoW, photoH).fill().restore();
       doc.save().strokeColor(theme.rule).lineWidth(0.75).rect(photoX, photoY, photoW, photoH).stroke().restore();
-      doc.font('Helvetica-Bold').fontSize(34).fillColor(theme.blue).text(initials, photoX, photoY + photoH / 2 - 17, { width: photoW, align: 'center' });
+      doc.font('Helvetica-Bold').fontSize(38).fillColor(theme.blue).text(initials, photoX, photoY + photoH / 2 - 19, { width: photoW, align: 'center' });
     }
 
     // --- Name (top-left, beside photo) ---
     const nameY = photoY + 4;
     doc.font('Helvetica-Bold').fontSize(22).fillColor(theme.ink).text(fullName, leftX, nameY, { width: leftTextWidth, align: 'left' });
 
-    // --- Rule 1: under the name, full width ---
-    let ruleY = nameY + 28;
-    doc.moveTo(leftX, ruleY).lineTo(doc.page.width - doc.page.margins.right, ruleY).lineWidth(0.75).strokeColor(theme.rule).stroke();
-
-    // --- Target role ---
-    let nextY = ruleY + 6;
+    // --- Target role (ABOVE rule 1, below name) ---
+    let nextY = nameY + 28;
     if (targetRole) {
       doc.font('Helvetica').fontSize(11).fillColor(theme.blue).text(targetRole, leftX, nextY, { width: leftTextWidth, align: 'left' });
       nextY += 16;
     }
 
+    // --- Rule 1: LEFT COLUMN ONLY (stops before photo, no overlap) ---
+    let ruleY = nextY + 2;
+    doc.moveTo(leftX, ruleY).lineTo(photoX - 8, ruleY).lineWidth(0.75).strokeColor(theme.rule).stroke();
+
     // --- Contact icons ---
-    doc.y = nextY + 2;
+    doc.y = ruleY + 6;
     addContactRows(doc, contactItems, { align: 'left' });
 
     // --- Personal details (Nationality | DOB | POB) as separate lines ---

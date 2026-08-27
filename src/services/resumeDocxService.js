@@ -347,7 +347,7 @@ async function generateResumeDocx(resumeData = {}) {
         const buffer = Buffer.from(photoBase64, 'base64');
         photoImageRun = new ImageRun({
           data: buffer,
-          transformation: { width: 95, height: 119 },
+          transformation: { width: 110, height: 138 },
           type: 'jpg',
         });
       } catch (err) {
@@ -355,7 +355,7 @@ async function generateResumeDocx(resumeData = {}) {
       }
     }
 
-    // Build the LEFT cell content: name, rule1, target, contacts, personal details
+    // Build the LEFT cell content: name, target, rule1, contacts, personal details
     const leftCellChildren = [
       // Name
       new Paragraph({
@@ -365,15 +365,9 @@ async function generateResumeDocx(resumeData = {}) {
           new TextRun({ text: fullName, bold: true, size: 44, color: hexToDocx(theme.ink), font: 'Helvetica' }),
         ],
       }),
-      // Rule 1 (bottom border on an empty paragraph)
-      new Paragraph({
-        spacing: { after: 60 },
-        border: { bottom: { color: hexToDocx(theme.rule), space: 1, style: BorderStyle.SINGLE, size: 6 } },
-        children: [],
-      }),
     ];
 
-    // Target role
+    // Target role (ABOVE rule 1, below name)
     if (targetRole) {
       leftCellChildren.push(new Paragraph({
         alignment: AlignmentType.LEFT,
@@ -383,6 +377,14 @@ async function generateResumeDocx(resumeData = {}) {
         ],
       }));
     }
+
+    // Rule 1 (bottom border on an empty paragraph — spans left column only,
+    // since the right column has the photo)
+    leftCellChildren.push(new Paragraph({
+      spacing: { after: 60 },
+      border: { bottom: { color: hexToDocx(theme.rule), space: 1, style: BorderStyle.SINGLE, size: 6 } },
+      children: [],
+    }));
 
     // Contact icons (hyperlinked Unicode glyphs)
     const contactIconsPara = contactIconsParagraph(contactItems, theme);
