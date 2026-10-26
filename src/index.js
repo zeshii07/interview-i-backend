@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
-const multer = require('multer'); // ADDED
+const multer = require('multer');
 
 // Load environment variables
 dotenv.config();
@@ -9,52 +9,61 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// ADDED: Configure Multer for audio file uploads
-const upload = multer({ 
-  storage: multer.memoryStorage(), 
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB max
+// Multer for audio file uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
 });
 
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// Routes
+// --- Routes ---
 const interviewRoutes = require('./routes/interviewRoutes');
 app.use('/api/interview', interviewRoutes);
-const resumeRoutes = require('./routes/resumeRoutes');
 
+const resumeRoutes = require('./routes/resumeRoutes');
 app.use('/api/resume', resumeRoutes);
 
-app.use((error, _req, res, next) => {
-  if (!error) return next();
-  if (error.name === 'MulterError' || /PDF|DOCX|DOC|resume/i.test(error.message)) {
-    return res.status(400).json({ success: false, message: error.message });
-  }
-  return next(error);
-});
+// NEW: Job search routes (multi-source aggregator)
+const jobRoutes = require('./routes/jobRoutes');
+app.use('/api/jobs', jobRoutes);
 
-// ADDED: Transcribe Route (Attached directly to app, not router)
+// Transcribe Route (attached directly to app — uses upload.single('audio'))
 const transcribeController = require('./controllers/transcribeController');
 app.post('/api/interview/transcribe', upload.single('audio'), transcribeController.transcribeAudioFile);
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ 
-    success: true, 
+  res.json({
+    success: true,
     message: 'Hirely AI API is running',
-    apiVersion: 2,
-    features: ['multilanguage-interviews', 'resume-file-upload'],
-    timestamp: new Date().toISOString()
+    apiVersion: 3,
+    features: [
+      'multilanguage-interviews',
+      'resume-file-upload',
+      'job-search-multi-provider',
+    ],
+    timestamp: new Date().toISOString(),
   });
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
+// Generic multer / upload error handler (must come BEFORE the catch-all)
+app.use((error, _req, res, next) => {
+  if (!error) return next();
+  if (error.name === 'MulterError' || /PDF|DOCX|DOC|resume|audio|file size/i.test(error.message)) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+  return next(error);
+});
+
+// Catch-all error handler
+app.use((err, _req, res, _next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({
     success: false,
-    message: 'Something went wrong!'
+    message: 'Something went wrong!',
   });
 });
 
@@ -64,7 +73,7 @@ app.listen(PORT, () => {
   ╔══════════════════════════════════════════╗
   ║       Hirely Backend Running              ║
   ║       Port: ${PORT}                         ║
-  ║       Env: ${process.env.NODE_ENV}                    ║
+  ║       Env: ${process.env.NODE_ENV || 'development'}                    ║
   ║       URL: http://localhost:${PORT}         ║
   ╚══════════════════════════════════════════╝
   `);
