@@ -1,21 +1,10 @@
 /**
- * USAJobs.gov API (US federal government jobs).
- *
+ * USAJobs.gov API.
  * Docs: https://developer.usajobs.gov/APIRequest/Index
- * Free tier: no hard quota, but each request should include a User-Agent
- *            header identifying your application.
- *
- * Required env:
- *   USAJOBS_API_KEY
- *   USAJOBS_USER_AGENT  (e.g. "Hirely/1.0 (contact@hirely.app)")
- *
- * Note: Only returns US federal government jobs. Useful for users
- * searching for "government" or "public sector" roles, and as a
- * fallback when other providers are rate-limited (USAJobs has no quota).
+ * Required env: USAJOBS_API_KEY, USAJOBS_USER_AGENT
  */
 
 const axios = require('axios');
-
 const BASE = 'https://data.usajobs.gov/api/Search';
 
 function deriveExperienceLevel(title = '') {
@@ -30,17 +19,12 @@ function deriveExperienceLevel(title = '') {
 async function search(params) {
   const apiKey = process.env.USAJOBS_API_KEY;
   const userAgent = process.env.USAJOBS_USER_AGENT;
-
   if (!apiKey || !userAgent) return [];
 
   const {
-    query = '',
-    location = '',
-    remoteOnly = false,
-    datePosted = null,
-    jobType = null,
-    salaryMin = null,
-    salaryMax = null,
+    query = '', location = '', remoteOnly = false,
+    datePosted = null, jobType = null,
+    salaryMin = null, salaryMax = null,
     resultsPerPage = 20,
   } = params;
 
@@ -67,11 +51,9 @@ async function search(params) {
         Accept: 'application/json',
       },
     });
-
     const results = Array.isArray(resp?.data?.SearchResult?.SearchResultItems)
       ? resp.data.SearchResult.SearchResultItems
       : [];
-
     return results.map((item) => {
       const j = item.MatchedObjectDescriptor || {};
       const title = j.PositionTitle || 'Untitled role';
@@ -79,28 +61,18 @@ async function search(params) {
       const remuneration = j.PositionRemuneration?.[0] || {};
       const min = remuneration.MinimumRange ? Number(remuneration.MinimumRange) : null;
       const max = remuneration.MaximumRange ? Number(remuneration.MaximumRange) : null;
-
-      // Apply salary filter (USAJobs has no server-side salary filter)
       if (salaryMin && (!max || max < salaryMin)) return null;
       if (salaryMax && (!min || min > salaryMax)) return null;
-
       return {
         id: `usajobs:${item.MatchedObjectId}`,
-        provider: 'usajobs',
-        providerLabel: 'USAJobs.gov',
-        title,
-        company: j.OrganizationName || 'U.S. Government',
+        provider: 'usajobs', providerLabel: 'USAJobs.gov',
+        title, company: j.OrganizationName || 'U.S. Government',
         location: loc,
         isRemote: Boolean(j.PositionLocation?.some?.((l) => /remote/i.test(l.Description || ''))),
         description: j.QualificationSummary || j.UserArea?.Details?.JobSummary || '',
         url: j.PositionURI || null,
         postedAt: j.PublicationStartDate ? new Date(j.PublicationStartDate).toISOString() : null,
-        salary: {
-          min,
-          max,
-          currency: remuneration.CurrencyCode || 'USD',
-          predicted: false,
-        },
+        salary: { min, max, currency: remuneration.CurrencyCode || 'USD', predicted: false },
         experienceLevel: deriveExperienceLevel(title),
         contractType: j.PositionSchedule?.[0]?.Name || null,
         raw: { source: 'usajobs', id: item.MatchedObjectId },
@@ -113,8 +85,7 @@ async function search(params) {
 }
 
 module.exports = {
-  id: 'usajobs',
-  label: 'USAJobs.gov',
+  id: 'usajobs', label: 'USAJobs.gov',
   isConfigured: () => Boolean(process.env.USAJOBS_API_KEY && process.env.USAJOBS_USER_AGENT),
   search,
 };

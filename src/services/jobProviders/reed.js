@@ -1,19 +1,11 @@
 /**
  * Reed.co.uk Jobs API.
- *
  * Docs: https://www.reed.co.uk/developers/jobseeker
- * Free tier: no formal quota, but please be reasonable (rate-limit per IP).
- *
- * Required env:
- *   REED_API_KEY
- *
- * Note: Reed only returns UK jobs. Still useful for the multi-source
- * aggregator — when the user searches from a UK / EU location, Reed
- * returns higher-quality local results than Adzuna does.
+ * Free tier: no formal quota, rate-limited per IP.
+ * Note: UK only.
  */
 
 const axios = require('axios');
-
 const BASE = 'https://www.reed.co.uk/api/1.0/search';
 
 function deriveExperienceLevel(title = '') {
@@ -30,13 +22,9 @@ async function search(params) {
   if (!apiKey) return [];
 
   const {
-    query = '',
-    location = '',
-    remoteOnly = false,
-    datePosted = null,
-    jobType = null,
-    salaryMin = null,
-    salaryMax = null,
+    query = '', location = '', remoteOnly = false,
+    datePosted = null, jobType = null,
+    salaryMin = null, salaryMax = null,
     resultsPerPage = 20,
   } = params;
 
@@ -47,7 +35,6 @@ async function search(params) {
   if (location) searchParams.set('locationName', location);
   searchParams.set('resultsToTake', String(Math.min(100, resultsPerPage)));
 
-  if (datePosted === '24h') searchParams.set('postedByRecruiterDirect', 'true');
   if (remoteOnly) searchParams.set('workingFromHome', 'true');
   if (jobType === 'full_time') searchParams.set('fullTime', 'true');
   else if (jobType === 'part_time') searchParams.set('partTime', 'true');
@@ -58,23 +45,18 @@ async function search(params) {
   if (salaryMax) searchParams.set('maximumSalary', String(salaryMax));
 
   try {
-    // Reed uses HTTP Basic Auth with the API key as both username and password
     const resp = await axios.get(`${BASE}?${searchParams.toString()}`, {
       timeout: 12000,
       headers: { Accept: 'application/json' },
       auth: { username: apiKey, password: '' },
     });
-
     const results = Array.isArray(resp?.data?.results) ? resp.data.results : [];
-
     return results.map((r) => {
       const title = r.jobTitle || 'Untitled role';
       return {
         id: `reed:${r.jobId}`,
-        provider: 'reed',
-        providerLabel: 'Reed.co.uk',
-        title,
-        company: r.employerName || 'Unknown company',
+        provider: 'reed', providerLabel: 'Reed.co.uk',
+        title, company: r.employerName || 'Unknown company',
         location: r.locationName || location || 'UK',
         isRemote: Boolean(r.workFromHome),
         description: r.jobDescription || '',
@@ -83,8 +65,7 @@ async function search(params) {
         salary: {
           min: r.minimumSalary ? Number(r.minimumSalary) : null,
           max: r.maximumSalary ? Number(r.maximumSalary) : null,
-          currency: 'GBP',
-          predicted: false,
+          currency: 'GBP', predicted: false,
         },
         experienceLevel: deriveExperienceLevel(title),
         contractType: r.jobType || null,
@@ -98,8 +79,7 @@ async function search(params) {
 }
 
 module.exports = {
-  id: 'reed',
-  label: 'Reed.co.uk',
+  id: 'reed', label: 'Reed.co.uk',
   isConfigured: () => Boolean(process.env.REED_API_KEY),
   search,
 };

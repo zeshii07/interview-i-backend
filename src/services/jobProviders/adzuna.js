@@ -1,29 +1,24 @@
 /**
  * Adzuna Publisher API.
- *
  * Docs: https://developer.adzuna.com/docs/search
- * Free tier: 1,000 requests / month (per app id).
+ * Free tier: 1,000 requests / month per app id.
  *
  * Required env:
  *   ADZUNA_APP_ID
  *   ADZUNA_APP_KEY
- *
- * Optional env:
- *   ADZUNA_COUNTRY  (default "us") — two-letter country code from
- *                   the Adzuna country list: us, gb, au, at, be, br,
- *                   ca, de, fr, in, it, mx, nl, nz, pl, ru, sg, za, es, se, ch
+ * Optional:
+ *   ADZUNA_COUNTRY (default "us")
  */
 
 const axios = require('axios');
 
 const COUNTRY = (process.env.ADZUNA_COUNTRY || 'us').toLowerCase();
-
 const BASE = `https://api.adzuna.com/v1/api/jobs/${COUNTRY}/search`;
 
 const EXPERIENCE_KEYWORDS = {
-  entry: ['junior', 'entry', 'graduate', 'intern', 'trainee', 'associate i', 'associate 1', 'i-', 'level i'],
-  mid: ['mid', 'intermediate', 'associate ii', 'associate 2', 'ii-', 'level ii'],
-  senior: ['senior', 'sr.', 'sr ', 'lead', 'staff', 'iii', 'principal'],
+  entry: ['junior', 'entry', 'graduate', 'intern', 'trainee', 'associate i', 'associate 1'],
+  mid: ['mid', 'intermediate', 'associate ii', 'associate 2'],
+  senior: ['senior', 'sr.', 'sr ', 'lead', 'staff', 'principal'],
   lead: ['lead', 'staff', 'manager', 'head of', 'principal'],
   executive: ['director', 'vp', 'vice president', 'cto', 'cio', 'ceo', 'chief', 'executive'],
 };
@@ -42,52 +37,31 @@ function derivePostedDate(created) {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-/**
- * @param {object} params
- *   - query        : string  (keyword / job title)
- *   - location     : string
- *   - remoteOnly   : boolean
- *   - datePosted   : '24h' | '7d' | '30d' | null
- *   - jobType      : 'full_time' | 'part_time' | 'contract' | 'internship' | 'temporary' | null
- *   - salaryMin    : number | null
- *   - salaryMax    : number | null
- *   - page         : number (1-indexed)
- *   - resultsPerPage : number (max 50)
- */
 async function search(params) {
   const appId = process.env.ADZUNA_APP_ID;
   const appKey = process.env.ADZUNA_APP_KEY;
-
-  if (!appId || !appKey) {
-    return [];
-  }
+  if (!appId || !appKey) return [];
 
   const {
-    query = '',
-    location = '',
-    remoteOnly = false,
-    datePosted = null,
-    jobType = null,
-    salaryMin = null,
-    salaryMax = null,
-    page = 1,
-    resultsPerPage = 20,
+    query = '', location = '', remoteOnly = false,
+    datePosted = null, jobType = null,
+    salaryMin = null, salaryMax = null,
+    page = 1, resultsPerPage = 20,
   } = params;
 
   const url = `${BASE}/${page}`;
   const searchParams = new URLSearchParams({
-    app_id: appId,
-    app_key: appKey,
+    app_id: appId, app_key: appKey,
     results_per_page: String(Math.min(50, resultsPerPage)),
     content_type: 'text',
   });
 
   if (query) searchParams.set('what', query);
   if (location) searchParams.set('where', location);
-  if (remoteOnly) searchParams.set('max_days_old', '7');
-  if (datePosted === '24h') searchParams.set('max_days_old', '1');
-  else if (datePosted === '7d') searchParams.set('max_days_old', '7');
-  else if (datePosted === '30d') searchParams.set('max_days_old', '30');
+  if (remoteOnly || datePosted === '24h' || datePosted === '7d' || datePosted === '30d') {
+    const days = datePosted === '24h' ? '1' : datePosted === '7d' ? '7' : datePosted === '30d' ? '30' : '7';
+    searchParams.set('max_days_old', days);
+  }
 
   if (jobType === 'full_time') searchParams.set('full_time', '1');
   else if (jobType === 'part_time') searchParams.set('part_time', '1');
@@ -99,16 +73,12 @@ async function search(params) {
 
   try {
     const resp = await axios.get(`${url}?${searchParams.toString()}`, {
-      timeout: 12000,
-      headers: { Accept: 'application/json' },
+      timeout: 12000, headers: { Accept: 'application/json' },
     });
-
     const results = Array.isArray(resp?.data?.results) ? resp.data.results : [];
-
     return results.map((r) => ({
       id: `adzuna:${r.id || encodeURIComponent(r.url || '')}`,
-      provider: 'adzuna',
-      providerLabel: 'Adzuna',
+      provider: 'adzuna', providerLabel: 'Adzuna',
       title: r.title || 'Untitled role',
       company: (r.company && (r.company.displayname || r.company.label)) || 'Unknown company',
       location: r.location && (r.location.displayname || r.location.area?.join(', ')) || location || 'Unspecified',
@@ -116,9 +86,10 @@ async function search(params) {
       description: r.description || '',
       url: r.redirect_url || r.url || null,
       postedAt: derivePostedDate(r.created),
-      salary: r.salary_is_predicted
-        ? { min: r.salary_min || null, max: r.salary_max || null, currency: 'USD', predicted: true }
-        : { min: r.salary_min || null, max: r.salary_max || null, currency: 'USD', predicted: false },
+      salary: {
+        min: r.salary_min || null, max: r.salary_max || null,
+        currency: 'USD', predicted: Boolean(r.salary_is_predicted),
+      },
       experienceLevel: deriveExperienceLevel(r.title),
       contractType: r.contract_time || null,
       raw: { source: 'adzuna', id: r.id },
@@ -130,8 +101,7 @@ async function search(params) {
 }
 
 module.exports = {
-  id: 'adzuna',
-  label: 'Adzuna',
+  id: 'adzuna', label: 'Adzuna',
   isConfigured: () => Boolean(process.env.ADZUNA_APP_ID && process.env.ADZUNA_APP_KEY),
   search,
 };
